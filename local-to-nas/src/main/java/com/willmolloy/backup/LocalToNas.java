@@ -44,19 +44,15 @@ class LocalToNas implements FileBackup<Path, Path> {
               Path relativeFromSource = source.relativize(sourcePath);
               Path destinationPath = destination.resolve(relativeFromSource);
 
-              try {
-                if (Files.exists(sourcePath)) {
-                  if (!Files.exists(destinationPath)) {
-                    log.info("Creating backup: {} -> {}", sourcePath, destinationPath);
-                    copy(sourcePath, destinationPath);
-                  } else if (!Files.isDirectory(sourcePath)
-                      && differentContents(sourcePath, destinationPath)) {
-                    log.info("Updating backup: {} -> {}", sourcePath, destinationPath);
-                    copy(sourcePath, destinationPath);
-                  }
+              if (Files.exists(sourcePath)) {
+                if (!Files.exists(destinationPath)) {
+                  log.info("Creating backup: {} -> {}", sourcePath, destinationPath);
+                  copy(sourcePath, destinationPath);
+                } else if (!Files.isDirectory(sourcePath)
+                    && differentContents(sourcePath, destinationPath)) {
+                  log.info("Updating backup: {} -> {}", sourcePath, destinationPath);
+                  copy(sourcePath, destinationPath);
                 }
-              } catch (RuntimeException e) {
-                log.error("Error backing up: %s".formatted(sourcePath), e);
               }
             });
   }

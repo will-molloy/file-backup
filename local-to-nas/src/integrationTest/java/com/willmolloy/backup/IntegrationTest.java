@@ -92,6 +92,47 @@ class IntegrationTest {
   }
 
   @Test
+  void given_fileOnlyOnDestination_then_deletesFileOnDestination() throws IOException {
+    // Given
+    Path destinationFile1 = createFileAt(destination.resolve("file1"));
+
+    // When
+    Main.main(source.toString(), destination.toString(), "false");
+
+    // Then
+    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
+  }
+
+  @Test
+  void given_filesOnlyOnDestination_then_deletesFilesOnDestination() throws IOException {
+    // Given
+    Path destinationFile1 = createFileAt(destination.resolve("file1"));
+    Path destinationFile2 = createFileAt(destination.resolve("file2"));
+    Path destinationNestedFile1 = createFileAt(destination.resolve("nested/file1"));
+    Path destinationNestedFile2 = createFileAt(destination.resolve("nested/directory/file2"));
+    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+
+    // When
+    Main.main(source.toString(), destination.toString(), "false");
+
+    // Then
+    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
+  }
+
+  @Test
+  void given_emptyDirectoryOnlyOnDestination_then_deletesEmptyDirectoryOnDestination()
+      throws IOException {
+    // Given
+    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+
+    // When
+    Main.main(source.toString(), destination.toString(), "false");
+
+    // Then
+    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
+  }
+
+  @Test
   void given_fileOnBothSourceAndDestination_then_replacesFileOnDestination() throws IOException {
     // Given
     Path sourceFile1 = createFileAt(source.resolve("file1"));
@@ -141,47 +182,6 @@ class IntegrationTest {
 
     // Then
     assertThatSourceAndDestinationContainsExactlyRelativeFromSource(sourceEmptyDirectory);
-  }
-
-  @Test
-  void given_fileOnlyOnDestination_then_deletesFileOnDestination() throws IOException {
-    // Given
-    Path destinationFile1 = createFileAt(destination.resolve("file1"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
-  }
-
-  @Test
-  void given_filesOnlyOnDestination_then_deletesFilesOnDestination() throws IOException {
-    // Given
-    Path destinationFile1 = createFileAt(destination.resolve("file1"));
-    Path destinationFile2 = createFileAt(destination.resolve("file2"));
-    Path destinationNestedFile1 = createFileAt(destination.resolve("nested/file1"));
-    Path destinationNestedFile2 = createFileAt(destination.resolve("nested/directory/file2"));
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
-  }
-
-  @Test
-  void given_emptyDirectoryOnlyOnDestination_then_deletesEmptyDirectoryOnDestination()
-      throws IOException {
-    // Given
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
   }
 
   @Test
@@ -263,10 +263,7 @@ class IntegrationTest {
   private Path createFileAt(Path path) throws IOException {
     createDirectoryAt(checkNotNull(path.getParent()));
     Files.createFile(path);
-
-    String paragraph = faker.lorem().paragraph();
-    Files.writeString(path, paragraph);
-
+    Files.writeString(path, faker.lorem().paragraph());
     return path;
   }
 
