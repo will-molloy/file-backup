@@ -1,13 +1,17 @@
 package com.willmolloy.backup;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.github.javafaker.Faker;
 import com.google.common.truth.Correspondence;
+import com.willmolloy.backup.util.DirectoryWalker;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -19,14 +23,17 @@ import org.junit.jupiter.api.Test;
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
+@SuppressFBWarnings("DLS_DEAD_LOCAL_STORE")
 class LocalToNasTest {
+
+  // TODO should be integration test
 
   private Path testFiles;
   private Path source;
   private Path destination;
 
   private final Faker faker = new Faker();
-
+  private final DirectoryWalker directoryWalker = new DirectoryWalker();
   private final LocalToNas localToNas = new LocalToNas();
 
   @BeforeEach
@@ -57,7 +64,7 @@ class LocalToNasTest {
     localToNas.backup(source, destination);
 
     // Then
-    assertThatSourceAndDestinationContainExactly(
+    assertThatSourceAndDestinationContainExactlyRelativeFromSource(
         sourceFile1, sourceFile2, sourceNestedFile1, sourceNestedFile2, sourceEmptyDirectory);
   }
 
@@ -80,7 +87,7 @@ class LocalToNasTest {
     localToNas.backup(source, destination);
 
     // Then
-    assertThatSourceAndDestinationContainExactly(
+    assertThatSourceAndDestinationContainExactlyRelativeFromSource(
         sourceFile1, sourceFile2, sourceNestedFile1, sourceNestedFile2, sourceEmptyDirectory);
   }
 
@@ -97,11 +104,11 @@ class LocalToNasTest {
     localToNas.backup(source, destination);
 
     // Then
-    assertThatSourceAndDestinationContainExactly();
+    assertThatSourceAndDestinationContainExactlyRelativeFromSource();
   }
 
   private Path createFileAt(Path path) throws IOException {
-    createDirectoryAt(path.getParent());
+    createDirectoryAt(checkNotNull(path.getParent()));
     Files.createFile(path);
 
     String paragraph = faker.lorem().paragraph();
@@ -115,21 +122,19 @@ class LocalToNasTest {
     return path;
   }
 
-  private void assertThatSourceAndDestinationContainExactly(Path... expected) throws IOException {
+  private void assertThatSourceAndDestinationContainExactlyRelativeFromSource(Path... expected) {
     for (Path directory : List.of(source, destination)) {
-      List<Path> leaves =
-          Files.walk(directory)
-              .filter(
+      List<Path> expectedRelativeFromSource =
+          Arrays.stream(expected)
+              .map(
                   path -> {
-                    try {
-                      return Files.isRegularFile(path) || Files.list(path).findAny().isEmpty();
-                    } catch (IOException e) {
-                      throw new UncheckedIOException(e);
-                    }
+                    Path relativeFromSource = source.relativize(path);
+                    return directory.resolve(relativeFromSource);
                   })
               .toList();
-
-      assertThat(leaves).comparingElementsUsing(pathsEquivalent()).containsExactly(expected);
+      assertThat(directoryWalker.leavesExcludingSelf(directory).toList())
+          .comparingElementsUsing(pathsEquivalent())
+          .containsExactlyElementsIn(expectedRelativeFromSource);
     }
   }
 
