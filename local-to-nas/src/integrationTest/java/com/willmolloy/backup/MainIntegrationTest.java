@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
 @SuppressFBWarnings("DLS_DEAD_LOCAL_STORE")
-class LocalToNasIntegrationTest {
+class MainIntegrationTest {
 
   private Path testFiles;
   private Path source;
@@ -32,7 +32,6 @@ class LocalToNasIntegrationTest {
 
   private final Faker faker = new Faker();
   private final DirectoryWalker directoryWalker = new DirectoryWalker();
-  private final LocalToNas localToNas = new LocalToNas();
 
   @BeforeEach
   void setUp() throws IOException {
@@ -59,7 +58,7 @@ class LocalToNasIntegrationTest {
     Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
 
     // When
-    localToNas.backup(source, destination);
+    Main.main(source.toString(), destination.toString());
 
     // Then
     assertThatSourceAndDestinationContainExactlyRelativeFromSource(
@@ -82,7 +81,7 @@ class LocalToNasIntegrationTest {
     Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
 
     // When
-    localToNas.backup(source, destination);
+    Main.main(source.toString(), destination.toString());
 
     // Then
     assertThatSourceAndDestinationContainExactlyRelativeFromSource(
@@ -99,7 +98,7 @@ class LocalToNasIntegrationTest {
     Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
 
     // When
-    localToNas.backup(source, destination);
+    Main.main(source.toString(), destination.toString());
 
     // Then
     assertThatSourceAndDestinationContainExactlyRelativeFromSource();

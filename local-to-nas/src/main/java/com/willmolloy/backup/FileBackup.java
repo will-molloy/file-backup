@@ -7,7 +7,7 @@ package com.willmolloy.backup;
  * @param <TDestination> Destination type
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
-public interface FileBackup<TSource, TDestination> {
+interface FileBackup<TSource, TDestination> {
 
   void backup(TSource source, TDestination destination);
 }

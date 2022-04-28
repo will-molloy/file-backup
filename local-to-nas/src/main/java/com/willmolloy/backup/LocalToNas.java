@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
-public class LocalToNas implements FileBackup<Path, Path> {
+class LocalToNas implements FileBackup<Path, Path> {
 
   private static final Logger log = LogManager.getLogger();
 
