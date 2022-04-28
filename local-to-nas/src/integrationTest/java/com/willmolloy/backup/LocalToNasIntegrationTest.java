@@ -24,9 +24,7 @@ import org.junit.jupiter.api.Test;
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
 @SuppressFBWarnings("DLS_DEAD_LOCAL_STORE")
-class LocalToNasTest {
-
-  // TODO should be integration test
+class LocalToNasIntegrationTest {
 
   private Path testFiles;
   private Path source;
