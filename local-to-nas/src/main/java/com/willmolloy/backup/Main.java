@@ -19,6 +19,7 @@ final class Main {
   private static final Logger log = LogManager.getLogger();
 
   public static void main(String... args) {
+    Stopwatch stopwatch = Stopwatch.createStarted();
     try {
       checkArgument(args.length == 3, "Expected 3 args");
       Path source = Path.of(args[0]);
@@ -29,17 +30,14 @@ final class Main {
 
       FileBackup<Path, Path> localToNas = new LocalToNas(dryRun);
 
-      Stopwatch stopwatch = Stopwatch.createStarted();
-
       log.info(
           "Running backup - source={}, destination={}, dryRun={}", source, destination, dryRun);
-
       localToNas.backup(source, destination);
-
-      log.info("Backup complete - elapsed: {}", stopwatch.elapsed());
+      log.info("Backup complete");
     } catch (Throwable t) {
       log.fatal("Fatal error", t);
-      throw t;
+    } finally {
+      log.info("Elapsed: {}", stopwatch.elapsed());
     }
   }
 }

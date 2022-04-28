@@ -37,8 +37,10 @@ class LocalToNas implements FileBackup<Path, Path> {
     log.info("Walking source: {}", source);
     directoryWalker
         .leavesExcludingSelf(source)
+        .parallel()
         .forEach(
             sourcePath -> {
+              log.debug("Processing: {}", sourcePath);
               Path relativeFromSource = source.relativize(sourcePath);
               Path destinationPath = destination.resolve(relativeFromSource);
 
@@ -85,8 +87,10 @@ class LocalToNas implements FileBackup<Path, Path> {
     log.info("Walking destination: {}", source);
     directoryWalker
         .allNodesExcludingSelf(destination)
+        .parallel()
         .forEach(
             destinationPath -> {
+              log.debug("Processing: {}", destinationPath);
               Path relativeFromDestination = destination.relativize(destinationPath);
               Path sourcePath = source.resolve(relativeFromDestination);
 

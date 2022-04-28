@@ -19,12 +19,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * LocalToNasTest.
+ * Integration test.
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
 @SuppressFBWarnings("DLS_DEAD_LOCAL_STORE")
-class MainIntegrationTest {
+class IntegrationTest {
 
   private Path testFiles;
   private Path source;
@@ -119,10 +119,11 @@ class MainIntegrationTest {
     return path;
   }
 
-  private void assertThatSourceAndDestinationContainExactlyRelativeFromSource(Path... expected) {
+  private void assertThatSourceAndDestinationContainExactlyRelativeFromSource(
+      Path... expectedLeaves) {
     for (Path directory : List.of(source, destination)) {
-      List<Path> expectedRelativeFromSource =
-          Arrays.stream(expected)
+      List<Path> expectedLeavesRelativeFromSource =
+          Arrays.stream(expectedLeaves)
               .map(
                   path -> {
                     Path relativeFromSource = source.relativize(path);
@@ -131,7 +132,7 @@ class MainIntegrationTest {
               .toList();
       assertThat(directoryWalker.leavesExcludingSelf(directory).toList())
           .comparingElementsUsing(pathsEquivalent())
-          .containsExactlyElementsIn(expectedRelativeFromSource);
+          .containsExactlyElementsIn(expectedLeavesRelativeFromSource);
     }
   }
 
