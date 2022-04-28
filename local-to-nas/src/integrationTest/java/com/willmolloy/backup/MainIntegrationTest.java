@@ -58,7 +58,7 @@ class MainIntegrationTest {
     Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
 
     // When
-    Main.main(source.toString(), destination.toString());
+    Main.main(source.toString(), destination.toString(), "false");
 
     // Then
     assertThatSourceAndDestinationContainExactlyRelativeFromSource(
@@ -81,7 +81,7 @@ class MainIntegrationTest {
     Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
 
     // When
-    Main.main(source.toString(), destination.toString());
+    Main.main(source.toString(), destination.toString(), "false");
 
     // Then
     assertThatSourceAndDestinationContainExactlyRelativeFromSource(
@@ -98,7 +98,7 @@ class MainIntegrationTest {
     Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
 
     // When
-    Main.main(source.toString(), destination.toString());
+    Main.main(source.toString(), destination.toString(), "false");
 
     // Then
     assertThatSourceAndDestinationContainExactlyRelativeFromSource();

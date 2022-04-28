@@ -2,6 +2,7 @@ package com.willmolloy.backup;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import com.google.common.base.Stopwatch;
 import com.willmolloy.backup.util.DirectoryWalker;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,11 +22,25 @@ class LocalToNas implements FileBackup<Path, Path> {
   private static final Logger log = LogManager.getLogger();
 
   private final DirectoryWalker directoryWalker = new DirectoryWalker();
+  private final boolean dryRun;
+
+  LocalToNas(boolean dryRun) {
+    this.dryRun = dryRun;
+  }
 
   @Override
   public void backup(Path source, Path destination) {
-    processSource(source, destination);
-    processDestination(source, destination);
+    try {
+      Stopwatch stopwatch = Stopwatch.createStarted();
+
+      log.info("Running backup(source={}, destination={}, dryRun={})", source, destination, dryRun);
+      processSource(source, destination);
+      processDestination(source, destination);
+
+      log.info("Backup complete - elapsed: {}", stopwatch.elapsed());
+    } catch (Throwable t) {
+      log.fatal("Fatal error", t);
+    }
   }
 
   private void processSource(Path source, Path destination) {
@@ -55,6 +70,9 @@ class LocalToNas implements FileBackup<Path, Path> {
   }
 
   private void copy(Path source, Path destination) {
+    if (dryRun) {
+      return;
+    }
     try {
       Files.createDirectories(checkNotNull(destination.getParent()));
       Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
@@ -90,6 +108,9 @@ class LocalToNas implements FileBackup<Path, Path> {
   }
 
   private void delete(Path path) {
+    if (dryRun) {
+      return;
+    }
     try {
       if (Files.isDirectory(path)) {
         FileUtils.deleteDirectory(path.toFile());
