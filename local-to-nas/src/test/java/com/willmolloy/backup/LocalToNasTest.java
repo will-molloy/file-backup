@@ -4,7 +4,6 @@ import static com.google.common.truth.Truth.assertThat;
 
 import com.github.javafaker.Faker;
 import com.google.common.truth.Correspondence;
-import com.google.common.truth.IterableSubject;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -48,36 +47,58 @@ class LocalToNasTest {
   @Test
   void given_filesOnlyOnSource_then_copiesFilesToDestination() throws IOException {
     // Given
-    Path file1 = createFileAt(source.resolve("file1"));
-    Path file2 = createFileAt(source.resolve("file2"));
-    Path nestedFile1 = createFileAt(source.resolve("nested/file1"));
-    Path nestedFile2 = createFileAt(source.resolve("nested/directory/file2"));
-    Path emptyDirectory = createDirectoryAt(source.resolve("user/documents"));
+    Path sourceFile1 = createFileAt(source.resolve("file1"));
+    Path sourceFile2 = createFileAt(source.resolve("file2"));
+    Path sourceNestedFile1 = createFileAt(source.resolve("nested/file1"));
+    Path sourceNestedFile2 = createFileAt(source.resolve("nested/directory/file2"));
+    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
 
     // When
     localToNas.backup(source, destination);
 
     // Then
-    for (Path path : List.of(source, destination)) {
-      assertThatDirectory(path)
-          .containsExactly(
-              path,
-              file1,
-              file2,
-              nestedFile1.getParent(),
-              nestedFile1,
-              nestedFile2.getParent(),
-              nestedFile2,
-              emptyDirectory.getParent(),
-              emptyDirectory);
-    }
+    assertThatSourceAndDestinationContainExactly(
+        sourceFile1, sourceFile2, sourceNestedFile1, sourceNestedFile2, sourceEmptyDirectory);
   }
 
   @Test
-  void given_filesOnBothSourceAndDestination_then_replacesFilesOnDestination() {}
+  void given_filesOnBothSourceAndDestination_then_replacesFilesOnDestination() throws IOException {
+    // Given
+    Path sourceFile1 = createFileAt(source.resolve("file1"));
+    Path sourceFile2 = createFileAt(source.resolve("file2"));
+    Path sourceNestedFile1 = createFileAt(source.resolve("nested/file1"));
+    Path sourceNestedFile2 = createFileAt(source.resolve("nested/directory/file2"));
+    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
+
+    Path destinationFile1 = createFileAt(destination.resolve("file1"));
+    Path destinationFile2 = createFileAt(destination.resolve("file2"));
+    Path destinationNestedFile1 = createFileAt(destination.resolve("nested/file1"));
+    Path destinationNestedFile2 = createFileAt(destination.resolve("nested/directory/file2"));
+    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+
+    // When
+    localToNas.backup(source, destination);
+
+    // Then
+    assertThatSourceAndDestinationContainExactly(
+        sourceFile1, sourceFile2, sourceNestedFile1, sourceNestedFile2, sourceEmptyDirectory);
+  }
 
   @Test
-  void given_filesOnlyOnDestination_then_deletesFilesOnDestination() {}
+  void given_filesOnlyOnDestination_then_deletesFilesOnDestination() throws IOException {
+    // Given
+    Path destinationFile1 = createFileAt(destination.resolve("file1"));
+    Path destinationFile2 = createFileAt(destination.resolve("file2"));
+    Path destinationNestedFile1 = createFileAt(destination.resolve("nested/file1"));
+    Path destinationNestedFile2 = createFileAt(destination.resolve("nested/directory/file2"));
+    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+
+    // When
+    localToNas.backup(source, destination);
+
+    // Then
+    assertThatSourceAndDestinationContainExactly();
+  }
 
   private Path createFileAt(Path path) throws IOException {
     createDirectoryAt(path.getParent());
@@ -94,9 +115,22 @@ class LocalToNasTest {
     return path;
   }
 
-  private IterableSubject.UsingCorrespondence<Path, Path> assertThatDirectory(Path path)
-      throws IOException {
-    return assertThat(Files.walk(path).toList()).comparingElementsUsing(pathsEquivalent());
+  private void assertThatSourceAndDestinationContainExactly(Path... expected) throws IOException {
+    for (Path directory : List.of(source, destination)) {
+      List<Path> leaves =
+          Files.walk(directory)
+              .filter(
+                  path -> {
+                    try {
+                      return Files.isRegularFile(path) || Files.list(path).findAny().isEmpty();
+                    } catch (IOException e) {
+                      throw new UncheckedIOException(e);
+                    }
+                  })
+              .toList();
+
+      assertThat(leaves).comparingElementsUsing(pathsEquivalent()).containsExactly(expected);
+    }
   }
 
   private Correspondence<Path, Path> pathsEquivalent() {
