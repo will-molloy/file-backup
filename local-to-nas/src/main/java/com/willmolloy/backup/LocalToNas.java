@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
-public class LocalToNas implements FileBackup {
+public class LocalToNas implements FileBackup<Path, Path> {
 
   private static final Logger log = LogManager.getLogger();
 
@@ -34,8 +34,8 @@ public class LocalToNas implements FileBackup {
         .leavesExcludingSelf(source)
         .forEach(
             sourcePath -> {
-              Path relative = source.relativize(sourcePath);
-              Path destinationPath = destination.resolve(relative);
+              Path relativeFromSource = source.relativize(sourcePath);
+              Path destinationPath = destination.resolve(relativeFromSource);
 
               try {
                 if (Files.exists(sourcePath)) {
@@ -79,8 +79,8 @@ public class LocalToNas implements FileBackup {
         .allNodesExcludingSelf(destination)
         .forEach(
             destinationPath -> {
-              Path relative = destination.relativize(destinationPath);
-              Path sourcePath = source.resolve(relative);
+              Path relativeFromDestination = destination.relativize(destinationPath);
+              Path sourcePath = source.resolve(relativeFromDestination);
 
               if (Files.exists(destinationPath) && !Files.exists(sourcePath)) {
                 log.info("Deleting backup: {}", destinationPath);

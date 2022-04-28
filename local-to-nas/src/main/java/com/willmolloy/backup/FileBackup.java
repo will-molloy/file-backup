@@ -1,13 +1,13 @@
 package com.willmolloy.backup;
 
-import java.nio.file.Path;
-
 /**
  * File backup contract.
  *
+ * @param <TSource> Source type
+ * @param <TDestination>> Destination type
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
-public interface FileBackup {
+public interface FileBackup<TSource, TDestination> {
 
-  void backup(Path source, Path destination);
+  void backup(TSource source, TDestination destination);
 }
