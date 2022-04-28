@@ -1,0 +1,9 @@
+String source = "C:\\Users\\Will\\Documents"
+String destination = "D:\\Backups\\Windows-Documents-folder"
+boolean dryRun = true
+
+task run(type: JavaExec) {
+  classpath = sourceSets.main.runtimeClasspath
+  main = 'com.willmolloy.backup.Main'
+  args = [source, destination, dryRun]
+}

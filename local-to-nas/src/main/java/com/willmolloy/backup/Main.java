@@ -27,11 +27,12 @@ final class Main {
       checkArgument(Files.isDirectory(source), "Expected source (%s) to be a directory");
       checkArgument(Files.isDirectory(destination), "Expected destination (%s) to be a directory");
 
-      LocalToNas localToNas = new LocalToNas(dryRun);
+      FileBackup<Path, Path> localToNas = new LocalToNas(dryRun);
 
       Stopwatch stopwatch = Stopwatch.createStarted();
 
-      log.info("Running backup(source={}, destination={}, dryRun={})", source, destination, dryRun);
+      log.info(
+          "Running backup - source={}, destination={}, dryRun={}", source, destination, dryRun);
 
       localToNas.backup(source, destination);
 

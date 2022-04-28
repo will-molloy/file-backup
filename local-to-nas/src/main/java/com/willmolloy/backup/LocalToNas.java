@@ -2,7 +2,6 @@ package com.willmolloy.backup;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.base.Stopwatch;
 import com.willmolloy.backup.util.DirectoryWalker;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,17 +29,8 @@ class LocalToNas implements FileBackup<Path, Path> {
 
   @Override
   public void backup(Path source, Path destination) {
-    try {
-      Stopwatch stopwatch = Stopwatch.createStarted();
-
-      log.info("Running backup(source={}, destination={}, dryRun={})", source, destination, dryRun);
-      processSource(source, destination);
-      processDestination(source, destination);
-
-      log.info("Backup complete - elapsed: {}", stopwatch.elapsed());
-    } catch (Throwable t) {
-      log.fatal("Fatal error", t);
-    }
+    processSource(source, destination);
+    processDestination(source, destination);
   }
 
   private void processSource(Path source, Path destination) {
