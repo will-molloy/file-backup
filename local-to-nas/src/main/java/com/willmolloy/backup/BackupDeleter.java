@@ -42,7 +42,7 @@ class BackupDeleter {
                 if (Files.exists(destinationPath) && !Files.exists(sourcePath)) {
                   log.info("Deleting backup: {}", destinationPath);
                   delete(destinationPath);
-                  deleteCount.incrementAndGet();
+                  deleteCount.getAndIncrement();
                 }
               });
     } finally {

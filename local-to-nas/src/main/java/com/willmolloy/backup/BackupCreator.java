@@ -3,6 +3,7 @@ package com.willmolloy.backup;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.willmolloy.backup.util.DirectoryWalker;
+import com.willmolloy.infrastructure.ProducerConsumer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -33,31 +34,37 @@ class BackupCreator {
     log.info("Processing source: {}", source);
     AtomicInteger copyCount = new AtomicInteger(0);
     try {
-      directoryWalker
-          .leavesExcludingSelf(source)
-          // TODO is this safe???
-          .parallel()
-          .forEach(
-              sourcePath -> {
-                Path relativeFromSource = source.relativize(sourcePath);
-                Path destinationPath = destination.resolve(relativeFromSource);
-
-                if (Files.exists(sourcePath)) {
-
-                  if (!Files.exists(destinationPath)) {
-                    log.info("Creating backup: {} -> {}", sourcePath, destinationPath);
-                    copy(sourcePath, destinationPath);
-                    copyCount.incrementAndGet();
-
-                  } else if (differentContents(sourcePath, destinationPath)) {
-                    log.info("Updating backup: {} -> {}", sourcePath, destinationPath);
-                    copy(sourcePath, destinationPath);
-                    copyCount.incrementAndGet();
-                  }
-                }
-              });
+      ProducerConsumer<Path> producerConsumer =
+          new ProducerConsumer<>(
+              // only need to process leaves, parent directories can be created when needed
+              // also allows the code to run concurrently (it wouldn't be threadsafe otherwise,
+              // subdirectories would depend on their parents being created first)
+              () -> directoryWalker.leavesExcludingSelf(source),
+              sourcePath -> process(sourcePath, source, destination, copyCount));
+      producerConsumer.run();
+    } catch (InterruptedException e) {
+      log.error("Producer/Consumer interrupted", e);
     } finally {
       log.info("Created/updated {} backup(s)", copyCount.get());
+    }
+  }
+
+  private void process(Path sourcePath, Path source, Path destination, AtomicInteger copyCount) {
+    Path relativeFromSource = source.relativize(sourcePath);
+    Path destinationPath = destination.resolve(relativeFromSource);
+
+    if (Files.exists(sourcePath)) {
+
+      if (!Files.exists(destinationPath)) {
+        log.info("Creating backup: {} -> {}", sourcePath, destinationPath);
+        copy(sourcePath, destinationPath);
+        copyCount.getAndIncrement();
+
+      } else if (differentContents(sourcePath, destinationPath)) {
+        log.info("Updating backup: {} -> {}", sourcePath, destinationPath);
+        copy(sourcePath, destinationPath);
+        copyCount.getAndIncrement();
+      }
     }
   }
 
@@ -70,8 +77,7 @@ class BackupCreator {
           || Files.size(source) != Files.size(destination);
     } catch (IOException e) {
       log.warn("Error comparing: %s to %s".formatted(source, destination), e);
-      // may as well perform the backup, it doesn't make the code incorrect, only potentially slower
-      return true;
+      return false;
     }
   }
 
