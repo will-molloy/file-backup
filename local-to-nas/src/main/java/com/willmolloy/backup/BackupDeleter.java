@@ -1,6 +1,7 @@
 package com.willmolloy.backup;
 
 import com.willmolloy.backup.util.DirectoryWalker;
+import com.willmolloy.infrastructure.ProducerConsumer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,7 +11,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Deletes backups from Source -> Destination.
+ * Deletes backups in Destination that are no longer in Source.
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
@@ -30,23 +31,29 @@ class BackupDeleter {
     log.info("Processing destination: {}", source);
     AtomicInteger deleteCount = new AtomicInteger(0);
     try {
-      directoryWalker
-          .allNodesExcludingSelf(destination)
-          // TODO is this safe???
-          .parallel()
-          .forEach(
-              destinationPath -> {
-                Path relativeFromDestination = destination.relativize(destinationPath);
-                Path sourcePath = source.resolve(relativeFromDestination);
-
-                if (Files.exists(destinationPath) && !Files.exists(sourcePath)) {
-                  log.info("Deleting backup: {}", destinationPath);
-                  delete(destinationPath);
-                  deleteCount.getAndIncrement();
-                }
-              });
+      ProducerConsumer<Path> producerConsumer =
+          new ProducerConsumer<>(
+              // unlike creating the backups, need to process all nodes, not just leaves
+              // because if we delete a leaf, then may need to delete its parent too
+              () -> directoryWalker.allNodesExcludingSelf(destination),
+              destinationPath -> process(destinationPath, source, destination, deleteCount));
+      producerConsumer.run();
+    } catch (InterruptedException e) {
+      log.error("Producer/Consumer interrupted", e);
     } finally {
       log.info("Deleted {} backup(s)", deleteCount.get());
+    }
+  }
+
+  private void process(
+      Path destinationPath, Path source, Path destination, AtomicInteger deleteCount) {
+    Path relativeFromDestination = destination.relativize(destinationPath);
+    Path sourcePath = source.resolve(relativeFromDestination);
+
+    if (Files.exists(destinationPath) && !Files.exists(sourcePath)) {
+      log.info("Deleting backup: {}", destinationPath);
+      delete(destinationPath);
+      deleteCount.getAndIncrement();
     }
   }
 

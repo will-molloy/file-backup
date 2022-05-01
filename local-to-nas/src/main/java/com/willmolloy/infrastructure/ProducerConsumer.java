@@ -19,8 +19,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class ProducerConsumer<TData> {
 
-  private static final int BUFFER_SIZE = 100;
   private static final int NUM_CONSUMERS = Runtime.getRuntime().availableProcessors();
+  private static final int BUFFER_SIZE = NUM_CONSUMERS * 100;
 
   private final Supplier<Stream<TData>> producer;
   private final Consumer<TData> consumer;
@@ -106,6 +106,7 @@ public class ProducerConsumer<TData> {
           TData data = queue.take();
           consumer.accept(data);
         } catch (InterruptedException e) {
+          // TODO RIGHT NOW ITS STOPPING WHEN ITEMS STILL IN THE QUEUE!
           // expected
           return;
         }

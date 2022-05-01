@@ -14,7 +14,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Creates/updates backups from Source -> Destination.
+ * Creates/updates backups in Destination that aren't in sync with Source.
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
