@@ -31,10 +31,11 @@ class BackupDeleter {
     log.info("Processing destination: {}", source);
     AtomicInteger deleteCount = new AtomicInteger(0);
     try {
+      // prefer Producer-Consumer over parallel stream since directory tree size is unknown
       ProducerConsumer<Path> producerConsumer =
           new ProducerConsumer<>(
-              // unlike creating the backups, need to process all nodes, not just leaves
-              // because if we delete a leaf, then may need to delete its parent too
+              // unlike creating the backups, need to process all nodes, not just leaves, because if
+              // we delete a leaf, then may need to delete its parent too
               () -> directoryWalker.allNodesExcludingSelf(destination),
               destinationPath -> process(destinationPath, source, destination, deleteCount));
       producerConsumer.run();
@@ -63,7 +64,8 @@ class BackupDeleter {
       if (Files.isDirectory(path)) {
         // clean directory first
         // Not using FileUtils.deleteDirectory/cleanDirectory, it isn't resilient to other consumer
-        // threads deleting the children first
+        // threads deleting the children first (they fail to delete the entire dir if a child
+        // doesn't exist and throws the NoSuchFileException)
         for (Path child : Files.list(path).toList()) {
           delete(child);
         }

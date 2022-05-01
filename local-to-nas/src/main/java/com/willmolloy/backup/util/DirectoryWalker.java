@@ -56,7 +56,10 @@ public class DirectoryWalker {
               }
               return List.of();
             });
-    return Streams.stream(fileTraverser.depthFirstPreOrder(directory));
+
+    return Streams.stream(fileTraverser.depthFirstPreOrder(directory))
+        // filter out symbolic links here
+        .filter(path -> !Files.isSymbolicLink(path));
   }
 
   private boolean isLeaf(Path node) {

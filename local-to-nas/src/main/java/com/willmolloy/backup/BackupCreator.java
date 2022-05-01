@@ -5,7 +5,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.willmolloy.backup.util.DirectoryWalker;
 import com.willmolloy.infrastructure.ProducerConsumer;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,9 +34,10 @@ class BackupCreator {
     log.info("Processing source: {}", source);
     AtomicInteger copyCount = new AtomicInteger(0);
     try {
+      // prefer Producer-Consumer over parallel stream since directory tree size is unknown
       ProducerConsumer<Path> producerConsumer =
           new ProducerConsumer<>(
-              // only need to process leaves, parent directories can be created when needed
+              // only need to process leaves, parent dirs can be created all at once when needed
               // also allows the code to run concurrently (it wouldn't be threadsafe otherwise,
               // subdirectories would depend on their parents being created first)
               () -> directoryWalker.leavesExcludingSelf(source),
@@ -70,9 +70,8 @@ class BackupCreator {
   private boolean outOfSync(Path source, Path destination) {
     try {
       // comparing last modified time and size attributes only
-      // Files.mismatch is slow (and unnecessary?)
-      return !Files.getLastModifiedTime(source, LinkOption.NOFOLLOW_LINKS)
-              .equals(Files.getLastModifiedTime(destination, LinkOption.NOFOLLOW_LINKS))
+      // Files.mismatch is slow (and unnecessary?) (file size check is unnecessary?)
+      return !Files.getLastModifiedTime(source).equals(Files.getLastModifiedTime(destination))
           || Files.size(source) != Files.size(destination);
     } catch (Exception e) {
       log.warn("Error comparing: %s to %s".formatted(source, destination), e);
