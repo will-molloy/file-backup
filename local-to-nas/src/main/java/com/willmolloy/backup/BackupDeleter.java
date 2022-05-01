@@ -38,8 +38,6 @@ class BackupDeleter {
               () -> directoryWalker.allNodesExcludingSelf(destination),
               destinationPath -> process(destinationPath, source, destination, deleteCount));
       producerConsumer.run();
-    } catch (InterruptedException e) {
-      log.warn("Producer/Consumer interrupted", e);
     } finally {
       log.info("Deleted {} backup(s)", deleteCount.get());
     }

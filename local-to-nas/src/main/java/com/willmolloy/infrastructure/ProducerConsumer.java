@@ -21,7 +21,9 @@ import org.apache.logging.log4j.Logger;
  */
 public class ProducerConsumer<TData> {
 
-  private static final int NUM_CONSUMERS = 2;
+  private static final Logger log = LogManager.getLogger();
+
+  private static final int NUM_CONSUMERS = Runtime.getRuntime().availableProcessors() / 2;
   private static final int BUFFER_SIZE = NUM_CONSUMERS * 100;
 
   private final Supplier<Stream<TData>> producer;
@@ -32,12 +34,8 @@ public class ProducerConsumer<TData> {
     this.consumer = consumer;
   }
 
-  /**
-   * Run the Producer/Consumer.
-   *
-   * @throws InterruptedException if interrupted waiting for the producer
-   */
-  public void run() throws InterruptedException {
+  /** Run the Producer/Consumer. */
+  public void run() {
     ArrayBlockingQueue<TData> queue = new ArrayBlockingQueue<>(BUFFER_SIZE);
     AtomicBoolean producerFinished = new AtomicBoolean(false);
 
@@ -56,13 +54,18 @@ public class ProducerConsumer<TData> {
       consumerThread.start();
     }
 
-    // wait until producer finishes
-    producerThread.join();
-    // signal completion
-    producerFinished.set(true);
-    // wait until consumers finish
-    for (Thread consumerThread : consumerThreads) {
-      consumerThread.join();
+    try {
+      // wait until producer finishes
+      producerThread.join();
+      // signal completion
+      producerFinished.set(true);
+      // wait until consumers finish
+      for (Thread consumerThread : consumerThreads) {
+        consumerThread.join();
+      }
+    } catch (InterruptedException e) {
+      log.warn("Producer/Consumer interrupted", e);
+      Thread.currentThread().interrupt();
     }
   }
 
@@ -91,10 +94,11 @@ public class ProducerConsumer<TData> {
                     count.getAndIncrement();
                   } catch (InterruptedException e) {
                     log.warn("Producer interrupted", e);
+                    Thread.currentThread().interrupt();
                   }
                 });
       } finally {
-        log.info("Produced {} node(s)", count.get());
+        log.debug("Produced {} node(s)", count.get());
       }
     }
   }
@@ -116,15 +120,22 @@ public class ProducerConsumer<TData> {
 
     @Override
     public void run() {
-      while (!producerFinished.get() || !queue.isEmpty()) {
-        try {
-          TData data = queue.poll(1, TimeUnit.SECONDS);
-          if (data != null) {
-            consumer.accept(data);
+      AtomicInteger count = new AtomicInteger();
+      try {
+        while (!producerFinished.get() || !queue.isEmpty()) {
+          try {
+            TData data = queue.poll(1, TimeUnit.SECONDS);
+            if (data != null) {
+              consumer.accept(data);
+              count.getAndIncrement();
+            }
+          } catch (InterruptedException e) {
+            log.warn("Consumer interrupted", e);
+            Thread.currentThread().interrupt();
           }
-        } catch (InterruptedException e) {
-          log.warn("Consumer interrupted", e);
         }
+      } finally {
+        log.debug("Consumed {} node(s)", count.get());
       }
     }
   }

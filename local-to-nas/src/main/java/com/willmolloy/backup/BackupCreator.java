@@ -43,8 +43,6 @@ class BackupCreator {
               () -> directoryWalker.leavesExcludingSelf(source),
               sourcePath -> process(sourcePath, source, destination, copyCount));
       producerConsumer.run();
-    } catch (InterruptedException e) {
-      log.warn("Producer/Consumer interrupted", e);
     } finally {
       log.info("Created/updated {} backup(s)", copyCount.get());
     }
