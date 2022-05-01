@@ -5,6 +5,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.willmolloy.backup.util.DirectoryWalker;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -85,7 +86,11 @@ class LocalToNas implements FileBackup<Path, Path> {
 
   private boolean differentContents(Path source, Path destination) {
     try {
-      return Files.mismatch(source, destination) != -1;
+      // comparing last modified time and size attributes only
+      // Files.mismatch is slow (and unnecessary?)
+      return !Files.getLastModifiedTime(source, LinkOption.NOFOLLOW_LINKS)
+              .equals(Files.getLastModifiedTime(destination, LinkOption.NOFOLLOW_LINKS))
+          || Files.size(source) != Files.size(destination);
     } catch (IOException e) {
       log.warn("Error comparing: %s to %s".formatted(source, destination), e);
       // may as well perform the backup, it doesn't make the code incorrect, only potentially slower

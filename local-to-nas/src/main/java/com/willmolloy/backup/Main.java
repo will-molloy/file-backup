@@ -25,8 +25,12 @@ final class Main {
       Path source = Path.of(args[0]);
       Path destination = Path.of(args[1]);
       boolean dryRun = Boolean.parseBoolean(args[2]);
-      checkArgument(Files.isDirectory(source), "Expected source (%s) to be a directory");
-      checkArgument(Files.isDirectory(destination), "Expected destination (%s) to be a directory");
+      checkArgument(
+          Files.exists(source) && Files.isDirectory(source),
+          "Expected source (%s) to be a directory");
+      checkArgument(
+          Files.exists(destination) && Files.isDirectory(destination),
+          "Expected destination (%s) to be a directory");
       LocalToNas localToNas = new LocalToNas(dryRun);
 
       log.info(
