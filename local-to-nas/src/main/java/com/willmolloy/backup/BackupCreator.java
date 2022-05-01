@@ -4,7 +4,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.willmolloy.backup.util.DirectoryWalker;
 import com.willmolloy.infrastructure.ProducerConsumer;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -45,7 +44,7 @@ class BackupCreator {
               sourcePath -> process(sourcePath, source, destination, copyCount));
       producerConsumer.run();
     } catch (InterruptedException e) {
-      log.error("Producer/Consumer interrupted", e);
+      log.warn("Producer/Consumer interrupted", e);
     } finally {
       log.info("Created/updated {} backup(s)", copyCount.get());
     }
@@ -77,7 +76,7 @@ class BackupCreator {
       return !Files.getLastModifiedTime(source, LinkOption.NOFOLLOW_LINKS)
               .equals(Files.getLastModifiedTime(destination, LinkOption.NOFOLLOW_LINKS))
           || Files.size(source) != Files.size(destination);
-    } catch (IOException e) {
+    } catch (Exception e) {
       log.warn("Error comparing: %s to %s".formatted(source, destination), e);
       return false;
     }
@@ -94,7 +93,7 @@ class BackupCreator {
           destination,
           StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.COPY_ATTRIBUTES);
-    } catch (IOException e) {
+    } catch (Exception e) {
       log.error("Error copying: %s -> %s".formatted(source, destination), e);
     }
   }

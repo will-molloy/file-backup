@@ -3,6 +3,8 @@ package com.willmolloy.infrastructure;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -19,7 +21,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class ProducerConsumer<TData> {
 
-  private static final int NUM_CONSUMERS = Runtime.getRuntime().availableProcessors();
+  private static final int NUM_CONSUMERS = 2;
   private static final int BUFFER_SIZE = NUM_CONSUMERS * 100;
 
   private final Supplier<Stream<TData>> producer;
@@ -37,23 +39,31 @@ public class ProducerConsumer<TData> {
    */
   public void run() throws InterruptedException {
     ArrayBlockingQueue<TData> queue = new ArrayBlockingQueue<>(BUFFER_SIZE);
+    AtomicBoolean producerFinished = new AtomicBoolean(false);
 
     Thread producerThread = new Thread(new BlockingProducer<>(queue, producer), "producer");
     List<Thread> consumerThreads =
         IntStream.range(0, NUM_CONSUMERS)
             .mapToObj(
                 i ->
-                    new Thread(new BlockingConsumer<>(queue, consumer), "consumer-%d".formatted(i)))
+                    new Thread(
+                        new BlockingConsumer<>(queue, consumer, producerFinished),
+                        "consumer-%d".formatted(i)))
             .toList();
 
     producerThread.start();
-    consumerThreads.forEach(Thread::start);
+    for (Thread consumerThread : consumerThreads) {
+      consumerThread.start();
+    }
 
-    // wait until producer stops producing
+    // wait until producer finishes
     producerThread.join();
-
-    // kill all consumers
-    consumerThreads.forEach(Thread::interrupt);
+    // signal completion
+    producerFinished.set(true);
+    // wait until consumers finish
+    for (Thread consumerThread : consumerThreads) {
+      consumerThread.join();
+    }
   }
 
   private static final class BlockingProducer<TData> implements Runnable {
@@ -80,7 +90,7 @@ public class ProducerConsumer<TData> {
                     queue.put(data);
                     count.getAndIncrement();
                   } catch (InterruptedException e) {
-                    log.error("Producer interrupted", e);
+                    log.warn("Producer interrupted", e);
                   }
                 });
       } finally {
@@ -91,24 +101,29 @@ public class ProducerConsumer<TData> {
 
   private static final class BlockingConsumer<TData> implements Runnable {
 
+    private static final Logger log = LogManager.getLogger();
+
     private final BlockingQueue<TData> queue;
     private final Consumer<TData> consumer;
+    private final AtomicBoolean producerFinished;
 
-    private BlockingConsumer(BlockingQueue<TData> queue, Consumer<TData> consumer) {
+    private BlockingConsumer(
+        BlockingQueue<TData> queue, Consumer<TData> consumer, AtomicBoolean producerFinished) {
       this.queue = queue;
       this.consumer = consumer;
+      this.producerFinished = producerFinished;
     }
 
     @Override
     public void run() {
-      while (true) {
+      while (!producerFinished.get() || !queue.isEmpty()) {
         try {
-          TData data = queue.take();
-          consumer.accept(data);
+          TData data = queue.poll(1, TimeUnit.SECONDS);
+          if (data != null) {
+            consumer.accept(data);
+          }
         } catch (InterruptedException e) {
-          // TODO RIGHT NOW ITS STOPPING WHEN ITEMS STILL IN THE QUEUE!
-          // expected
-          return;
+          log.warn("Consumer interrupted", e);
         }
       }
     }

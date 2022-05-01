@@ -4,9 +4,9 @@ import com.willmolloy.backup.util.DirectoryWalker;
 import com.willmolloy.infrastructure.ProducerConsumer;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,7 +39,7 @@ class BackupDeleter {
               destinationPath -> process(destinationPath, source, destination, deleteCount));
       producerConsumer.run();
     } catch (InterruptedException e) {
-      log.error("Producer/Consumer interrupted", e);
+      log.warn("Producer/Consumer interrupted", e);
     } finally {
       log.info("Deleted {} backup(s)", deleteCount.get());
     }
@@ -63,10 +63,17 @@ class BackupDeleter {
     }
     try {
       if (Files.isDirectory(path)) {
-        FileUtils.deleteDirectory(path.toFile());
-      } else {
-        Files.delete(path);
+        // clean directory first
+        // Not using FileUtils.deleteDirectory/cleanDirectory, it isn't resilient to other consumer
+        // threads deleting the children first
+        for (Path child : Files.list(path).toList()) {
+          delete(child);
+        }
       }
+      Files.delete(path);
+    } catch (NoSuchFileException ignored) {
+      // ignoring the NoSuchFileException, the path was already deleted by another consumer (i.e.
+      // another consumer that processed its parent)
     } catch (IOException e) {
       log.error("Error deleting: %s".formatted(path), e);
     }
