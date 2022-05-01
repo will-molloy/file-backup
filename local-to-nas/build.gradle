@@ -1,4 +1,4 @@
-String source = "C:\\Users\\Will\\Documents"
+String source = "C:\\Users\\Will\\Documents\\Assetto Corsa"
 String destination = "D:\\Backups\\Windows-Documents-folder"
 boolean dryRun = true
 

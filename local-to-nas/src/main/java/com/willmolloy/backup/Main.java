@@ -3,6 +3,7 @@ package com.willmolloy.backup;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import com.google.common.base.Stopwatch;
+import com.willmolloy.backup.util.DirectoryWalker;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.apache.logging.log4j.LogManager;
@@ -31,7 +32,11 @@ final class Main {
       checkArgument(
           Files.exists(destination) && Files.isDirectory(destination),
           "Expected destination (%s) to be a directory");
-      LocalToNas localToNas = new LocalToNas(dryRun);
+
+      DirectoryWalker directoryWalker = new DirectoryWalker();
+      BackupCreator backupCreator = new BackupCreator(directoryWalker, dryRun);
+      BackupDeleter backupDeleter = new BackupDeleter(directoryWalker, dryRun);
+      LocalToNas localToNas = new LocalToNas(backupCreator, backupDeleter);
 
       log.info(
           "Running backup - source={}, destination={}, dryRun={}", source, destination, dryRun);
