@@ -14,7 +14,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Creates/updates backups in Destination that aren't in sync with Source.
+ * Creates backups (files in Source that don't exist in Destination).
+ *
+ * <p>And updates backups (files in both Source and Destination that aren't in sync).
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
@@ -30,7 +32,7 @@ class BackupCreator {
     this.dryRun = dryRun;
   }
 
-  void processSource(Path source, Path destination) {
+  void createOrUpdateOutOfSyncBackups(Path source, Path destination) {
     log.info("Processing source: {}", source);
     AtomicInteger copyCount = new AtomicInteger(0);
     try {
@@ -60,7 +62,7 @@ class BackupCreator {
         copy(sourcePath, destinationPath);
         copyCount.getAndIncrement();
 
-      } else if (differentContents(sourcePath, destinationPath)) {
+      } else if (outOfSync(sourcePath, destinationPath)) {
         log.info("Updating backup: {} -> {}", sourcePath, destinationPath);
         copy(sourcePath, destinationPath);
         copyCount.getAndIncrement();
@@ -68,7 +70,7 @@ class BackupCreator {
     }
   }
 
-  private boolean differentContents(Path source, Path destination) {
+  private boolean outOfSync(Path source, Path destination) {
     try {
       // comparing last modified time and size attributes only
       // Files.mismatch is slow (and unnecessary?)

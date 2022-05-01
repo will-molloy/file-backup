@@ -19,7 +19,7 @@ class LocalToNas implements FileBackup<Path, Path> {
 
   @Override
   public void backup(Path source, Path destination) {
-    backupCreator.processSource(source, destination);
-    backupDeleter.processDestination(source, destination);
+    backupCreator.createOrUpdateOutOfSyncBackups(source, destination);
+    backupDeleter.deleteRedundantBackups(source, destination);
   }
 }

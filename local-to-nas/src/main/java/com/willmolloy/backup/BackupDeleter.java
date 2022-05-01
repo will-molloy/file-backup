@@ -11,7 +11,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Deletes backups in Destination that are no longer in Source.
+ * Deletes redundant backups (files in Destination that don't exist in Source).
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
@@ -27,7 +27,7 @@ class BackupDeleter {
     this.dryRun = dryRun;
   }
 
-  void processDestination(Path source, Path destination) {
+  void deleteRedundantBackups(Path source, Path destination) {
     log.info("Processing destination: {}", source);
     AtomicInteger deleteCount = new AtomicInteger(0);
     try {
