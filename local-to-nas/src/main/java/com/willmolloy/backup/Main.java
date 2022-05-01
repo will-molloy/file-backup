@@ -27,8 +27,7 @@ final class Main {
       boolean dryRun = Boolean.parseBoolean(args[2]);
       checkArgument(Files.isDirectory(source), "Expected source (%s) to be a directory");
       checkArgument(Files.isDirectory(destination), "Expected destination (%s) to be a directory");
-
-      FileBackup<Path, Path> localToNas = new LocalToNas(dryRun);
+      LocalToNas localToNas = new LocalToNas(dryRun);
 
       log.info(
           "Running backup - source={}, destination={}, dryRun={}", source, destination, dryRun);
