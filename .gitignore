@@ -64,3 +64,6 @@ atlassian-ide-plugin.xml
 
 # NetBeans specific files/directories
 .nbattrs
+
+# test data
+/local-to-nas/test-data/
