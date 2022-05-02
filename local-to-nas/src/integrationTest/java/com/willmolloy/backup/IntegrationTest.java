@@ -1,10 +1,9 @@
 package com.willmolloy.backup;
 
-import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Iterables.toArray;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.github.javafaker.Faker;
-import com.google.common.collect.Iterables;
 import com.google.common.truth.Correspondence;
 import com.willmolloy.backup.util.DirectoryWalker;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -14,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,226 +50,147 @@ class IntegrationTest {
   }
 
   @Test
-  void given_fileOnlyOnSource_then_copiesFileToDestination() throws IOException {
+  void given_filesOnlyOnSource_then_copiesFilesToDestination() {
     // Given
-    Path sourceFile1 = createFileAt(source.resolve("file1"));
+    List<Path> filesUnderSource = createRandomFilesOrDirectoriesUnder(source);
 
     // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(sourceFile1);
-  }
-
-  @Test
-  void given_filesOnlyOnSource_then_copiesFilesToDestination() throws IOException {
-    // Given
-    Path sourceFile1 = createFileAt(source.resolve("file1"));
-    Path sourceFile2 = createFileAt(source.resolve("file2"));
-    Path sourceNestedFile1 = createFileAt(source.resolve("nested/file1"));
-    Path sourceNestedFile2 = createFileAt(source.resolve("nested/directory/file2"));
-    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
+    runApp(false);
 
     // Then
     assertThatSourceAndDestinationContainsExactlyRelativeFromSource(
-        sourceFile1, sourceFile2, sourceNestedFile1, sourceNestedFile2, sourceEmptyDirectory);
+        toArray(filesUnderSource, Path.class));
   }
 
   @Test
-  void given_emptyDirectoryOnlyOnSource_then_copiesEmptyDirectoryToDestination()
-      throws IOException {
+  void given_filesOnlyOnDestination_then_deletesFilesOnDestination() {
     // Given
-    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("my-directory"));
+    List<Path> filesUnderDestination = createRandomFilesOrDirectoriesUnder(destination);
 
     // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(sourceEmptyDirectory);
-  }
-
-  @Test
-  void given_fileOnlyOnDestination_then_deletesFileOnDestination() throws IOException {
-    // Given
-    Path destinationFile1 = createFileAt(destination.resolve("file1"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
+    runApp(false);
 
     // Then
     assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
   }
 
   @Test
-  void given_filesOnlyOnDestination_then_deletesFilesOnDestination() throws IOException {
+  void given_fileOnBothSourceAndDestination_then_updatesFileOnDestination() {
     // Given
-    Path destinationFile1 = createFileAt(destination.resolve("file1"));
-    Path destinationFile2 = createFileAt(destination.resolve("file2"));
-    Path destinationNestedFile1 = createFileAt(destination.resolve("nested/file1"));
-    Path destinationNestedFile2 = createFileAt(destination.resolve("nested/directory/file2"));
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+    String fileName = faker.file().fileName();
+    Path fileUnderSource =
+        createFileAt(
+            source.resolve(fileName),
+            faker.lorem().paragraphs(faker.number().numberBetween(5, 10)));
+    Path fileUnderDestination = createFileAt(destination.resolve(fileName), List.of());
 
     // When
-    Main.main(source.toString(), destination.toString(), "false");
+    runApp(false);
 
     // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
+    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(fileUnderSource);
   }
 
   @Test
-  void given_emptyDirectoryOnlyOnDestination_then_deletesEmptyDirectoryOnDestination()
-      throws IOException {
+  void given_directoryOnSourceAndSubDirectoryOnDestination_then_deletesSubDirectoryOnDestination() {
     // Given
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+    Path directoryUnderSource = createDirectoryAt(source.resolve("user/documents"));
+    Path directoryUnderDestination = createDirectoryAt(destination.resolve("user/documents/work"));
 
     // When
-    Main.main(source.toString(), destination.toString(), "false");
+    runApp(false);
 
     // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource();
+    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(directoryUnderSource);
   }
 
   @Test
-  void given_fileOnBothSourceAndDestination_then_replacesFileOnDestination() throws IOException {
+  void
+      given_directoryOnSourceAndSuperDirectoryOnDestination_then_createsSubDirectoryOnDestination() {
     // Given
-    Path sourceFile1 = createFileAt(source.resolve("file1"));
-
-    Path destinationFile1 = createFileAt(destination.resolve("file1"));
+    Path directoryUnderSource = createDirectoryAt(source.resolve("user/documents/work"));
+    Path directoryUnderDestination = createDirectoryAt(destination.resolve("user/documents"));
 
     // When
-    Main.main(source.toString(), destination.toString(), "false");
+    runApp(false);
 
     // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(sourceFile1);
+    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(directoryUnderSource);
   }
 
   @Test
-  void given_filesOnBothSourceAndDestination_then_replacesFilesOnDestination() throws IOException {
+  void given_filesOnlyOnSource_and_dryRun_then_doesNothing() {
     // Given
-    Path sourceFile1 = createFileAt(source.resolve("file1"));
-    Path sourceFile2 = createFileAt(source.resolve("file2"));
-    Path sourceNestedFile1 = createFileAt(source.resolve("nested/file1"));
-    Path sourceNestedFile2 = createFileAt(source.resolve("nested/directory/file2"));
-    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
-
-    Path destinationFile1 = createFileAt(destination.resolve("file1"));
-    Path destinationFile2 = createFileAt(destination.resolve("file2"));
-    Path destinationNestedFile1 = createFileAt(destination.resolve("nested/file1"));
-    Path destinationNestedFile2 = createFileAt(destination.resolve("nested/directory/file2"));
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+    List<Path> filesUnderSource = createRandomFilesOrDirectoriesUnder(source);
 
     // When
-    Main.main(source.toString(), destination.toString(), "false");
+    runApp(true);
 
     // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(
-        sourceFile1, sourceFile2, sourceNestedFile1, sourceNestedFile2, sourceEmptyDirectory);
-  }
-
-  @Test
-  void given_emptyDirectoryOnBothSourceAndDestination_then_replacesEmptyDirectoryOnDestination()
-      throws IOException {
-    // Given
-    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
-
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(sourceEmptyDirectory);
-  }
-
-  @Test
-  void given_directoryOnSourceAndSubDirectoryOnDestination_then_deletesSubDirectoryOnDestination()
-      throws IOException {
-    // Given
-    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
-
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents/work"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(sourceEmptyDirectory);
-  }
-
-  @Test
-  void given_directoryOnSourceAndSuperDirectoryOnDestination_then_createsSubDirectoryOnDestination()
-      throws IOException {
-    // Given
-    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents/work"));
-
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "false");
-
-    // Then
-    assertThatSourceAndDestinationContainsExactlyRelativeFromSource(sourceEmptyDirectory);
-  }
-
-  @Test
-  void given_filesOnlyOnSource_and_dryRun_then_doesNothing() throws IOException {
-    // Given
-    Path sourceFile1 = createFileAt(source.resolve("file1"));
-    Path sourceFile2 = createFileAt(source.resolve("file2"));
-    Path sourceNestedFile1 = createFileAt(source.resolve("nested/file1"));
-    Path sourceNestedFile2 = createFileAt(source.resolve("nested/directory/file2"));
-    Path sourceEmptyDirectory = createDirectoryAt(source.resolve("user/documents"));
-
-    // When
-    Main.main(source.toString(), destination.toString(), "true");
-
-    // Then
-    assertThatDirectoryContainsExactly(
-        source,
-        sourceFile1,
-        sourceFile2,
-        sourceNestedFile1,
-        sourceNestedFile2,
-        sourceEmptyDirectory);
+    assertThatDirectoryContainsExactly(source, toArray(filesUnderSource, Path.class));
     assertThatDirectoryContainsExactly(destination);
   }
 
   @Test
-  void given_filesOnlyDestination_and_dryRun_then_doesNothing() throws IOException {
+  void given_filesOnlyDestination_and_dryRun_then_doesNothing() {
     // Given
-    Path destinationFile1 = createFileAt(destination.resolve("file1"));
-    Path destinationFile2 = createFileAt(destination.resolve("file2"));
-    Path destinationNestedFile1 = createFileAt(destination.resolve("nested/file1"));
-    Path destinationNestedFile2 = createFileAt(destination.resolve("nested/directory/file2"));
-    Path destinationEmptyDirectory = createDirectoryAt(destination.resolve("user/documents"));
+    List<Path> filesUnderDestination = createRandomFilesOrDirectoriesUnder(destination);
 
     // When
-    Main.main(source.toString(), destination.toString(), "true");
+    runApp(true);
 
     // Then
     assertThatDirectoryContainsExactly(source);
-    assertThatDirectoryContainsExactly(
-        destination,
-        destinationFile1,
-        destinationFile2,
-        destinationNestedFile1,
-        destinationNestedFile2,
-        destinationEmptyDirectory);
+    assertThatDirectoryContainsExactly(destination, toArray(filesUnderDestination, Path.class));
   }
 
-  private Path createFileAt(Path path) throws IOException {
-    createDirectoryAt(checkNotNull(path.getParent()));
-    Files.createFile(path);
-    Files.writeString(path, faker.lorem().paragraph());
-    return path;
+  private void runApp(boolean dryRun) {
+    Main.main(source.toString(), destination.toString(), Boolean.toString(dryRun));
   }
 
-  private Path createDirectoryAt(Path path) throws IOException {
-    Files.createDirectories(path);
-    return path;
+  private List<Path> createRandomFilesOrDirectoriesUnder(Path parentDirectory) {
+    return IntStream.range(0, faker.number().numberBetween(5, 10))
+        .mapToObj(i -> createRandomFileOrDirectoryUnder(parentDirectory))
+        .toList();
+  }
+
+  private Path createRandomFileOrDirectoryUnder(Path parentDirectory) {
+    if (faker.random().nextBoolean()) {
+      return createRandomFileUnder(parentDirectory);
+    } else {
+      return createRandomDirectoryUnder(parentDirectory);
+    }
+  }
+
+  private Path createRandomFileUnder(Path parentDirectory) {
+    Path file = parentDirectory.resolve(faker.file().fileName());
+    List<String> paragraphs = faker.lorem().paragraphs(faker.number().numberBetween(5, 10));
+    return createFileAt(file, paragraphs);
+  }
+
+  private Path createFileAt(Path file, List<String> contents) {
+    try {
+      Files.createDirectories(file.getParent());
+      Files.createFile(file);
+      Files.write(file, contents);
+      return file;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private Path createRandomDirectoryUnder(Path parentDirectory) {
+    Path directory = parentDirectory.resolve(faker.file().fileName(null, null, "", null));
+    return createDirectoryAt(directory);
+  }
+
+  private Path createDirectoryAt(Path directory) {
+    try {
+      Files.createDirectories(directory);
+      return directory;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   private void assertThatSourceAndDestinationContainsExactlyRelativeFromSource(
@@ -285,7 +206,7 @@ class IntegrationTest {
                 })
             .toList();
     assertThatDirectoryContainsExactly(
-        destination, Iterables.toArray(expectedLeavesRelativeFromDestination, Path.class));
+        destination, toArray(expectedLeavesRelativeFromDestination, Path.class));
   }
 
   private void assertThatDirectoryContainsExactly(Path directory, Path... expectedLeaves) {
