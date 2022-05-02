@@ -1,9 +1,14 @@
 package com.willmolloy.backup.util.concurrent;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -16,10 +21,6 @@ import org.apache.logging.log4j.Logger;
 /**
  * Encapsulates {@link BlockingQueue} producer/consumer setup.
  *
- * <p>Prefer this type of concurrency over {@link Stream#parallel} when the data size is unknown as
- * it better shares the work. Observed a 1.55x speedup for this app (traversing file trees of
- * unknown size).
- *
  * @param <TData> type of data produced/consumed.
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
@@ -27,13 +28,8 @@ public class ProducerConsumer<TData> {
 
   private static final Logger log = LogManager.getLogger();
 
-  // TODO what are the ideal values? Have observed more consumers the better, when does it plateau?
-  //  ^ we were testing with DryRun so it never blocked consumers when copying/deleting files
-  //  need to write performance test that actually copies files, like 1,000,000 files
-  // TODO how about using a thread pool and a new thread for each node/file? Then it'd effectively
-  //  find the ideal number of consumers.
   private static final int NUM_CONSUMERS = Runtime.getRuntime().availableProcessors();
-  private static final int BUFFER_SIZE = NUM_CONSUMERS * 100;
+  private static final int BUFFER_SIZE = 1_000_000;
 
   private final Supplier<Stream<TData>> producer;
   private final Consumer<TData> consumer;
@@ -49,6 +45,7 @@ public class ProducerConsumer<TData> {
     AtomicBoolean producerFinished = new AtomicBoolean(false);
 
     Thread producerThread = new Thread(new BlockingProducer<>(queue, producer), "producer");
+    log.debug("Starting 1 Producer");
     producerThread.start();
 
     List<Thread> consumerThreads =
@@ -59,6 +56,7 @@ public class ProducerConsumer<TData> {
                         new BlockingConsumer<>(queue, consumer, producerFinished),
                         "consumer-%d".formatted(i)))
             .toList();
+    log.debug("Starting {} Consumers", NUM_CONSUMERS);
     for (Thread consumerThread : consumerThreads) {
       consumerThread.start();
     }
@@ -96,14 +94,12 @@ public class ProducerConsumer<TData> {
       try {
         Iterator<TData> iterator = producer.get().iterator();
         while (iterator.hasNext()) {
-          try {
-            queue.put(iterator.next());
-            count++;
-          } catch (InterruptedException e) {
-            log.warn("Producer interrupted", e);
-            Thread.currentThread().interrupt();
-          }
+          queue.put(iterator.next());
+          count++;
         }
+      } catch (InterruptedException e) {
+        log.warn("Producer interrupted", e);
+        Thread.currentThread().interrupt();
       } finally {
         log.debug("Produced {} node(s)", count);
       }
@@ -130,17 +126,61 @@ public class ProducerConsumer<TData> {
       int count = 0;
       try {
         while (!producerFinished.get() || !queue.isEmpty()) {
-          try {
-            TData data = queue.poll(1, TimeUnit.SECONDS);
-            if (data != null) {
-              consumer.accept(data);
-              count++;
-            }
-          } catch (InterruptedException e) {
-            log.warn("Consumer interrupted", e);
-            Thread.currentThread().interrupt();
+          TData data = queue.poll(1, TimeUnit.SECONDS);
+          if (data != null) {
+            consumer.accept(data);
+            count++;
           }
         }
+      } catch (InterruptedException e) {
+        log.warn("Consumer interrupted", e);
+        Thread.currentThread().interrupt();
+      } finally {
+        log.debug("Consumed {} node(s)", count);
+      }
+    }
+  }
+
+  /*
+   * This consumer submits each element of the queue to a {@link Executors#newCachedThreadPool} for processing asynchronously.
+   *
+   * Therefore, it grows unbounded and (in theory) should use the hardware most optimally as it delegates the thread management to the OS.
+   */
+  private static final class UnboundedBlockingConsumer<TData> implements Runnable {
+
+    private static final Logger log = LogManager.getLogger();
+
+    private final BlockingQueue<TData> queue;
+    private final Consumer<TData> consumer;
+    private final AtomicBoolean producerFinished;
+
+    private UnboundedBlockingConsumer(
+        BlockingQueue<TData> queue, Consumer<TData> consumer, AtomicBoolean producerFinished) {
+      this.queue = queue;
+      this.consumer = consumer;
+      this.producerFinished = producerFinished;
+    }
+
+    @Override
+    public void run() {
+      int count = 0;
+      try {
+        ExecutorService threadPool = Executors.newCachedThreadPool();
+        List<Future<?>> tasks = new ArrayList<>();
+        while (!producerFinished.get() || !queue.isEmpty()) {
+          TData data = queue.take();
+          Future<?> task = threadPool.submit(() -> consumer.accept(data));
+          tasks.add(task);
+        }
+        for (Future<?> task : tasks) {
+          task.get();
+          count++;
+        }
+      } catch (InterruptedException e) {
+        log.warn("Consumer interrupted", e);
+        Thread.currentThread().interrupt();
+      } catch (ExecutionException e) {
+        log.warn("Consumer failed to process data", e);
       } finally {
         log.debug("Consumed {} node(s)", count);
       }
