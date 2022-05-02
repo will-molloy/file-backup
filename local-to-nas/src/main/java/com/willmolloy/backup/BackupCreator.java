@@ -3,7 +3,7 @@ package com.willmolloy.backup;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.willmolloy.backup.util.DirectoryWalker;
-import com.willmolloy.infrastructure.ProducerConsumer;
+import com.willmolloy.backup.util.concurrent.ProducerConsumer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -34,7 +34,6 @@ class BackupCreator {
     log.info("Processing source: {}", source);
     AtomicInteger copyCount = new AtomicInteger(0);
     try {
-      // prefer Producer-Consumer over parallel stream since directory tree size is unknown
       ProducerConsumer<Path> producerConsumer =
           new ProducerConsumer<>(
               // only need to process leaves, parent dirs can be created all at once when needed

@@ -1,7 +1,7 @@
 package com.willmolloy.backup;
 
 import com.willmolloy.backup.util.DirectoryWalker;
-import com.willmolloy.infrastructure.ProducerConsumer;
+import com.willmolloy.backup.util.concurrent.ProducerConsumer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -31,7 +31,6 @@ class BackupDeleter {
     log.info("Processing destination: {}", source);
     AtomicInteger deleteCount = new AtomicInteger(0);
     try {
-      // prefer Producer-Consumer over parallel stream since directory tree size is unknown
       ProducerConsumer<Path> producerConsumer =
           new ProducerConsumer<>(
               // unlike creating the backups, need to process all nodes, not just leaves, because if

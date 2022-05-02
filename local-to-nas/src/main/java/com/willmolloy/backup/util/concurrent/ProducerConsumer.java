@@ -1,4 +1,4 @@
-package com.willmolloy.infrastructure;
+package com.willmolloy.backup.util.concurrent;
 
 import java.util.Iterator;
 import java.util.List;
@@ -16,6 +16,10 @@ import org.apache.logging.log4j.Logger;
 /**
  * Encapsulates {@link BlockingQueue} producer/consumer setup.
  *
+ * <p>Prefer this type of concurrency over {@link Stream#parallel} when the data size is unknown as
+ * it better shares the work. Observed a 1.55x speedup for this app (traversing file trees of
+ * unknown size).
+ *
  * @param <TData> type of data produced/consumed.
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
@@ -23,7 +27,12 @@ public class ProducerConsumer<TData> {
 
   private static final Logger log = LogManager.getLogger();
 
-  private static final int NUM_CONSUMERS = Runtime.getRuntime().availableProcessors() / 2;
+  // TODO what are the ideal values? Have observed more consumers the better, when does it plateau?
+  //  ^ we were testing with DryRun so it never blocked consumers when copying/deleting files
+  //  need to write performance test that actually copies files, like 1,000,000 files
+  // TODO how about using a thread pool and a new thread for each node/file? Then it'd effectively
+  //  find the ideal number of consumers.
+  private static final int NUM_CONSUMERS = Runtime.getRuntime().availableProcessors();
   private static final int BUFFER_SIZE = NUM_CONSUMERS * 100;
 
   private final Supplier<Stream<TData>> producer;
