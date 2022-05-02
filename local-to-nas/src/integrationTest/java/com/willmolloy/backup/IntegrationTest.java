@@ -1,6 +1,8 @@
 package com.willmolloy.backup;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Iterables.toArray;
+import static com.google.common.io.Files.getNameWithoutExtension;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.github.javafaker.Faker;
@@ -170,7 +172,7 @@ class IntegrationTest {
 
   private Path createFileAt(Path file, List<String> contents) {
     try {
-      Files.createDirectories(file.getParent());
+      Files.createDirectories(checkNotNull(file.getParent()));
       Files.createFile(file);
       Files.write(file, contents);
       return file;
@@ -180,7 +182,7 @@ class IntegrationTest {
   }
 
   private Path createRandomDirectoryUnder(Path parentDirectory) {
-    Path directory = parentDirectory.resolve(faker.file().fileName(null, null, "", null));
+    Path directory = parentDirectory.resolve(getNameWithoutExtension(faker.file().fileName()));
     return createDirectoryAt(directory);
   }
 
