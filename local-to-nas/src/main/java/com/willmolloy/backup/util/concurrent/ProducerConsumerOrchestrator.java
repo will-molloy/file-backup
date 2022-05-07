@@ -11,6 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -19,44 +20,59 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Encapsulates {@link BlockingQueue} producer/consumer setup.
+ * Encapsulates {@link BlockingQueue} producer-consumer setup.
  *
- * @param <TData> type of data produced/consumed.
+ * @param <TElement> type of elements produced/consumed.
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
-public class ProducerConsumer<TData> {
+public class ProducerConsumerOrchestrator<TElement> {
 
   private static final Logger log = LogManager.getLogger();
 
-  private static final int NUM_CONSUMERS = Runtime.getRuntime().availableProcessors();
-  private static final int BUFFER_SIZE = 1_000_000;
+  private static final int BUFFER_SIZE = 10;
 
-  private final Supplier<Stream<TData>> producer;
-  private final Consumer<TData> consumer;
+  private final Supplier<Stream<TElement>> producer;
+  private final Consumer<TElement> consumer;
 
-  public ProducerConsumer(Supplier<Stream<TData>> producer, Consumer<TData> consumer) {
+  public ProducerConsumerOrchestrator(
+      Supplier<Stream<TElement>> producer, Consumer<TElement> consumer) {
     this.producer = producer;
     this.consumer = consumer;
   }
 
-  /** Run the Producer/Consumer. */
-  public void run() {
-    ArrayBlockingQueue<TData> queue = new ArrayBlockingQueue<>(BUFFER_SIZE);
+  /**
+   * Run the Producer/Consumer.
+   *
+   * @param numConsumers number of consumers. 0 to use 'unlimited' consumers approach via cached
+   *     thread pool
+   */
+  public void run(int numConsumers) {
+    ArrayBlockingQueue<TElement> queue = new ArrayBlockingQueue<>(BUFFER_SIZE);
     AtomicBoolean producerFinished = new AtomicBoolean(false);
 
     Thread producerThread = new Thread(new BlockingProducer<>(queue, producer), "producer");
-    log.debug("Starting 1 Producer");
+    log.debug("Starting Producer");
     producerThread.start();
 
-    List<Thread> consumerThreads =
-        IntStream.range(0, NUM_CONSUMERS)
-            .mapToObj(
-                i ->
-                    new Thread(
-                        new BlockingConsumer<>(queue, consumer, producerFinished),
-                        "consumer-%d".formatted(i)))
-            .toList();
-    log.debug("Starting {} Consumers", NUM_CONSUMERS);
+    List<Thread> consumerThreads;
+    if (numConsumers > 0) {
+      consumerThreads =
+          IntStream.range(0, numConsumers)
+              .mapToObj(
+                  i ->
+                      new Thread(
+                          new BlockingConsumer<>(queue, consumer, producerFinished),
+                          "consumer-%d".formatted(i)))
+              .toList();
+      log.debug("Starting {} Consumers", numConsumers);
+    } else {
+      consumerThreads =
+          List.of(
+              new Thread(
+                  new BlockingUnboundedConsumer<>(queue, consumer, producerFinished),
+                  "consumer-main"));
+      log.debug("Starting Unbounded Consumer");
+    }
     for (Thread consumerThread : consumerThreads) {
       consumerThread.start();
     }
@@ -101,7 +117,7 @@ public class ProducerConsumer<TData> {
         log.warn("Producer interrupted", e);
         Thread.currentThread().interrupt();
       } finally {
-        log.debug("Produced {} node(s)", count);
+        log.debug("Produced {} elements(s)", count);
       }
     }
   }
@@ -136,17 +152,16 @@ public class ProducerConsumer<TData> {
         log.warn("Consumer interrupted", e);
         Thread.currentThread().interrupt();
       } finally {
-        log.debug("Consumed {} node(s)", count);
+        log.debug("Consumed {} elements(s)", count);
       }
     }
   }
 
-  /*
-   * This consumer submits each element of the queue to a {@link Executors#newCachedThreadPool} for processing asynchronously.
-   *
-   * Therefore, it grows unbounded and (in theory) should use the hardware most optimally as it delegates the thread management to the OS.
-   */
-  private static final class UnboundedBlockingConsumer<TData> implements Runnable {
+  // This consumer submits each element that comes through the queue to a
+  // {@link Executors#newCachedThreadPool} for processing asynchronously.
+  // Therefore, it grows unbounded and (in theory) should use the hardware most optimally as it
+  // delegates the thread management to the OS.
+  private static final class BlockingUnboundedConsumer<TData> implements Runnable {
 
     private static final Logger log = LogManager.getLogger();
 
@@ -154,7 +169,7 @@ public class ProducerConsumer<TData> {
     private final Consumer<TData> consumer;
     private final AtomicBoolean producerFinished;
 
-    private UnboundedBlockingConsumer(
+    private BlockingUnboundedConsumer(
         BlockingQueue<TData> queue, Consumer<TData> consumer, AtomicBoolean producerFinished) {
       this.queue = queue;
       this.consumer = consumer;
@@ -163,18 +178,23 @@ public class ProducerConsumer<TData> {
 
     @Override
     public void run() {
-      int count = 0;
+      AtomicInteger count = new AtomicInteger();
       try {
-        ExecutorService threadPool = Executors.newCachedThreadPool();
+        ExecutorService threadPool =
+            Executors.newCachedThreadPool(
+                runnable -> new Thread(runnable, "consumer-%d".formatted(count.getAndIncrement())));
         List<Future<?>> tasks = new ArrayList<>();
+
         while (!producerFinished.get() || !queue.isEmpty()) {
-          TData data = queue.take();
-          Future<?> task = threadPool.submit(() -> consumer.accept(data));
-          tasks.add(task);
+          TData data = queue.poll(1, TimeUnit.SECONDS);
+          if (data != null) {
+            Future<?> task = threadPool.submit(() -> consumer.accept(data));
+            tasks.add(task);
+          }
         }
+
         for (Future<?> task : tasks) {
           task.get();
-          count++;
         }
       } catch (InterruptedException e) {
         log.warn("Consumer interrupted", e);
@@ -182,7 +202,7 @@ public class ProducerConsumer<TData> {
       } catch (ExecutionException e) {
         log.warn("Consumer failed to process data", e);
       } finally {
-        log.debug("Consumed {} node(s)", count);
+        log.debug("Consumed {} elements(s)", count.get());
       }
     }
   }

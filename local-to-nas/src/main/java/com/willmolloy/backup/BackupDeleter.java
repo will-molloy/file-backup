@@ -1,7 +1,7 @@
 package com.willmolloy.backup;
 
 import com.willmolloy.backup.util.DirectoryWalker;
-import com.willmolloy.backup.util.concurrent.ProducerConsumer;
+import com.willmolloy.backup.util.concurrent.ProducerConsumerOrchestrator;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -31,13 +31,13 @@ class BackupDeleter {
     log.info("Processing destination: {}", source);
     AtomicInteger deleteCount = new AtomicInteger(0);
     try {
-      ProducerConsumer<Path> producerConsumer =
-          new ProducerConsumer<>(
+      ProducerConsumerOrchestrator<Path> producerConsumer =
+          new ProducerConsumerOrchestrator<>(
               // unlike creating the backups, need to process all nodes, not just leaves, because if
               // we delete a leaf, then may need to delete its parent too
               () -> directoryWalker.allNodesExcludingSelf(destination),
               destinationPath -> process(destinationPath, source, destination, deleteCount));
-      producerConsumer.run();
+      producerConsumer.run(0);
     } finally {
       log.info("Deleted {} backup(s)", deleteCount.get());
     }

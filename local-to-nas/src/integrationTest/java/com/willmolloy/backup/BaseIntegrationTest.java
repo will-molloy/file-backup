@@ -20,7 +20,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
- * TestHelpers.
+ * Base Integration Test (helper methods etc.).
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */

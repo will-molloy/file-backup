@@ -3,7 +3,7 @@ package com.willmolloy.backup;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.willmolloy.backup.util.DirectoryWalker;
-import com.willmolloy.backup.util.concurrent.ProducerConsumer;
+import com.willmolloy.backup.util.concurrent.ProducerConsumerOrchestrator;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -34,14 +34,14 @@ class BackupCreator {
     log.info("Processing source: {}", source);
     AtomicInteger copyCount = new AtomicInteger(0);
     try {
-      ProducerConsumer<Path> producerConsumer =
-          new ProducerConsumer<>(
+      ProducerConsumerOrchestrator<Path> producerConsumer =
+          new ProducerConsumerOrchestrator<>(
               // only need to process leaves, parent dirs can be created all at once when needed
               // also allows the code to run concurrently (it wouldn't be threadsafe otherwise,
               // subdirectories would depend on their parents being created first)
               () -> directoryWalker.leavesExcludingSelf(source),
               sourcePath -> process(sourcePath, source, destination, copyCount));
-      producerConsumer.run();
+      producerConsumer.run(0);
     } finally {
       log.info("Created/updated {} backup(s)", copyCount.get());
     }
