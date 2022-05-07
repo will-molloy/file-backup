@@ -94,14 +94,14 @@ public class ProducerConsumerOrchestrator<TElement> {
     }
   }
 
-  private static final class BlockingProducer<TData> implements Runnable {
+  private static final class BlockingProducer<TElement> implements Runnable {
 
     private static final Logger log = LogManager.getLogger();
 
-    private final BlockingQueue<TData> queue;
-    private final Supplier<Stream<TData>> producer;
+    private final BlockingQueue<TElement> queue;
+    private final Supplier<Stream<TElement>> producer;
 
-    private BlockingProducer(BlockingQueue<TData> queue, Supplier<Stream<TData>> producer) {
+    private BlockingProducer(BlockingQueue<TElement> queue, Supplier<Stream<TElement>> producer) {
       this.queue = queue;
       this.producer = producer;
     }
@@ -110,7 +110,7 @@ public class ProducerConsumerOrchestrator<TElement> {
     public void run() {
       int count = 0;
       try {
-        Iterator<TData> iterator = producer.get().iterator();
+        Iterator<TElement> iterator = producer.get().iterator();
         while (iterator.hasNext()) {
           queue.put(iterator.next());
           count++;
@@ -124,16 +124,18 @@ public class ProducerConsumerOrchestrator<TElement> {
     }
   }
 
-  private static final class BlockingConsumer<TData> implements Runnable {
+  private static final class BlockingConsumer<TElement> implements Runnable {
 
     private static final Logger log = LogManager.getLogger();
 
-    private final BlockingQueue<TData> queue;
-    private final Consumer<TData> consumer;
+    private final BlockingQueue<TElement> queue;
+    private final Consumer<TElement> consumer;
     private final AtomicBoolean producerFinished;
 
     private BlockingConsumer(
-        BlockingQueue<TData> queue, Consumer<TData> consumer, AtomicBoolean producerFinished) {
+        BlockingQueue<TElement> queue,
+        Consumer<TElement> consumer,
+        AtomicBoolean producerFinished) {
       this.queue = queue;
       this.consumer = consumer;
       this.producerFinished = producerFinished;
@@ -144,9 +146,10 @@ public class ProducerConsumerOrchestrator<TElement> {
       int count = 0;
       try {
         while (!producerFinished.get() || !queue.isEmpty()) {
-          TData data = queue.poll(1, TimeUnit.SECONDS);
-          if (data != null) {
-            consumer.accept(data);
+          // need timeout in case the last element is consumed before producer finished is signalled
+          TElement element = queue.poll(500, TimeUnit.MILLISECONDS);
+          if (element != null) {
+            consumer.accept(element);
             count++;
           }
         }
@@ -159,20 +162,27 @@ public class ProducerConsumerOrchestrator<TElement> {
     }
   }
 
-  // This consumer submits each element that comes through the queue to a
-  // {@link Executors#newCachedThreadPool} for processing asynchronously.
-  // Therefore, it grows unbounded and (in theory) should use the hardware most optimally as it
-  // delegates the thread management to the OS.
-  private static final class BlockingUnboundedConsumer<TData> implements Runnable {
+  /**
+   * This consumer submits each element that comes through the queue to a {@link
+   * Executors#newCachedThreadPool} for processing asynchronously.
+   *
+   * <p>Therefore, it grows unbounded and (in theory) should use the hardware most optimally as it
+   * delegates the thread management to the OS.
+   *
+   * @param <TElement> type of elements consumed.
+   */
+  private static final class BlockingUnboundedConsumer<TElement> implements Runnable {
 
     private static final Logger log = LogManager.getLogger();
 
-    private final BlockingQueue<TData> queue;
-    private final Consumer<TData> consumer;
+    private final BlockingQueue<TElement> queue;
+    private final Consumer<TElement> consumer;
     private final AtomicBoolean producerFinished;
 
     private BlockingUnboundedConsumer(
-        BlockingQueue<TData> queue, Consumer<TData> consumer, AtomicBoolean producerFinished) {
+        BlockingQueue<TElement> queue,
+        Consumer<TElement> consumer,
+        AtomicBoolean producerFinished) {
       this.queue = queue;
       this.consumer = consumer;
       this.producerFinished = producerFinished;
@@ -180,18 +190,23 @@ public class ProducerConsumerOrchestrator<TElement> {
 
     @Override
     public void run() {
-      AtomicInteger count = new AtomicInteger();
-      try {
-        ExecutorService threadPool =
-            Executors.newCachedThreadPool(
-                runnable -> new Thread(runnable, "consumer-%d".formatted(count.getAndIncrement())));
-        // TODO this ArrayList is a memory leak, better way to signal consumer is finished?
-        List<Future<?>> tasks = new ArrayList<>();
+      AtomicInteger threadCount = new AtomicInteger();
+      ExecutorService threadPool =
+          Executors.newCachedThreadPool(
+              runnable ->
+                  new Thread(
+                      runnable, "consumer-worker-%d".formatted(threadCount.getAndIncrement())));
 
+      // TODO this ArrayList is a memory leak
+      //  better way to signal ExecutorService with unknown number of tasks is complete?
+      List<Future<?>> tasks = new ArrayList<>();
+
+      try {
         while (!producerFinished.get() || !queue.isEmpty()) {
-          TData data = queue.poll(1, TimeUnit.SECONDS);
-          if (data != null) {
-            Future<?> task = threadPool.submit(() -> consumer.accept(data));
+          // need timeout in case the last element is consumed before producer finished is signalled
+          TElement element = queue.poll(500, TimeUnit.MILLISECONDS);
+          if (element != null) {
+            Future<?> task = threadPool.submit(() -> consumer.accept(element));
             tasks.add(task);
           }
         }
@@ -201,11 +216,13 @@ public class ProducerConsumerOrchestrator<TElement> {
         }
       } catch (InterruptedException e) {
         log.warn("Consumer interrupted", e);
+        threadPool.shutdownNow();
         Thread.currentThread().interrupt();
       } catch (ExecutionException e) {
-        log.warn("Consumer failed to process data", e);
+        log.warn("Async consumer processing failed", e);
       } finally {
-        log.debug("Consumed {} elements(s)", count.get());
+        log.debug("Consumed {} elements(s)", tasks.size());
+        log.debug("Created {} thread(s)", threadCount.get());
       }
     }
   }

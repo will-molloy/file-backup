@@ -2,7 +2,6 @@ package com.willmolloy;
 
 import com.github.javafaker.Faker;
 import com.willmolloy.backup.util.concurrent.ProducerConsumerOrchestrator;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
@@ -39,7 +38,6 @@ import org.junit.jupiter.params.provider.ValueSource;
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
 @Disabled
-@SuppressFBWarnings("UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR")
 class QueueProcessorBenchmarkTest {
 
   /*
@@ -61,41 +59,42 @@ class QueueProcessorBenchmarkTest {
 
   @Test
   void streams_sequentialStream() {
-    streamToProcess().sequential().forEach(streamConsumer());
+    data().sequential().forEach(processor());
   }
 
   @Test
   void streams_parallelStream() {
-    streamToProcess().parallel().forEach(streamConsumer());
+    data().parallel().forEach(processor());
   }
 
   @ParameterizedTest
   @ValueSource(ints = {1, 2, 4, 8, 16, 32, 64, 128})
   void producerConsumer_fixedNumberOfConsumers(int numberOfConsumers) {
-    new ProducerConsumerOrchestrator<>(() -> streamToProcess(), streamConsumer())
-        .run(numberOfConsumers);
+    new ProducerConsumerOrchestrator<>(() -> data(), processor()).run(numberOfConsumers);
   }
 
   @Test
   void producerConsumer_unlimitedConsumersViaCachedThreadPool() {
-    new ProducerConsumerOrchestrator<>(() -> streamToProcess(), streamConsumer()).run(0);
+    new ProducerConsumerOrchestrator<>(() -> data(), processor()).run(0);
   }
 
-  private Stream<Integer> streamToProcess() {
+  private Stream<Integer> data() {
     // purposely make the stream unsized, then stream.parallel has a harder time dividing the work
     // (like in the actual app (traversing file tree))
-    return IntStream.iterate(1, i -> i <= 1000, i -> i + 1).boxed();
+    return IntStream.iterate(1, i -> i <= 1_000_000, i -> i + 1).boxed();
   }
 
-  private Consumer<Integer> streamConsumer() {
+  private Consumer<Integer> processor() {
     return i -> {
       try {
         // simulate processing
         // there is enough trials that the random number doesn't affect the result
         // (75s total processing on avg)
         // however, want randomness to test work sharing/stealing
+        // NOTE: Thread.sleep is async!
         Thread.sleep(Faker.instance().number().numberBetween(50, 100));
       } catch (InterruptedException e) {
+        log.error("Thread interrupted", e);
         Thread.currentThread().interrupt();
       }
       log.info("Processed: {}", i);
