@@ -19,21 +19,20 @@ import org.junit.jupiter.params.provider.ValueSource;
  * <p>Have discovered {@link Stream#parallel()} is not very good when the data size is unknown (as
  * it has difficulty dividing the work).
  *
- * <p>So considered producer-consumer approach. But then discovered the difficulty in picking number
- * of consumers.
+ * <p>So considered producer-consumer approach. But then discovered the difficulty in picking the
+ * number of consumers. ({@link Runtime#availableProcessors()} is not optimal since the work is I/O
+ * bound; CPU cores can work on multiple tasks at once.)
  *
  * <p>Now exploring 'unlimited' consumer approach where a thread is effectively created for each
- * message that comes through. Similar idea to a web server that effectively creates a thread for
- * each request. (Say 'effectively' since a thread is not always created, it comes from a cached
+ * message that comes through the queue. Similar idea to a web server that effectively creates a
+ * thread for each request. (Say 'effectively' since a thread is not always created, it comes from a
  * thread pool.) This lets the OS manage the optimal number of threads (and therefore consumers) for
  * us.
  *
- * <p>Concern with this approach is it creates too many threads for the OS/hardware to handle. I'd
- * expect {@link Executors#newCachedThreadPool()} to handle that.
- *
- * <p>Also, why doesn't the fixed number of consumers work? I.e. why does setting more threads than
- * the CPU has cores work? It's because the OS is constantly context switching and working on
- * multiple Java threads at once.
+ * <p>Well not quite, unfortunately {@link Executors#newCachedThreadPool} leads to {@link
+ * OutOfMemoryError} since it doesn't stop creating threads (similarly {@link
+ * Executors#newFixedThreadPool} doesn't stop queueing tasks). Therefore, we need to cap the number
+ * of tasks (and determine the optimal cap).
  *
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
@@ -41,7 +40,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class QueueProcessorBenchmarkTest {
 
   /*
-   * Statistics:
+   * Statistics (run on Ryzen 9 5950x, 1000 elements):
    * - Sequential:                                       78s
    * - Parallel streams:                                 77s (??? implemented wrong?)
    * - Producer-consumer, 1 Producer/1 Consumer:         76s
@@ -81,7 +80,7 @@ class QueueProcessorBenchmarkTest {
   private Stream<Integer> data() {
     // purposely make the stream unsized, then stream.parallel has a harder time dividing the work
     // (like in the actual app (traversing file tree))
-    return IntStream.iterate(1, i -> i <= 1_000_000, i -> i + 1).boxed();
+    return IntStream.iterate(1, i -> i <= 100_000, i -> i + 1).boxed();
   }
 
   private Consumer<Integer> processor() {
@@ -89,7 +88,6 @@ class QueueProcessorBenchmarkTest {
       try {
         // simulate processing
         // there is enough trials that the random number doesn't affect the result
-        // (75s total processing on avg)
         // however, want randomness to test work sharing/stealing
         // NOTE: Thread.sleep is async!
         Thread.sleep(Faker.instance().number().numberBetween(50, 100));

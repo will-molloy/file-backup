@@ -5,12 +5,15 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,8 +34,6 @@ public class ProducerConsumerOrchestrator<TElement> {
 
   private static final Logger log = LogManager.getLogger();
 
-  private static final int BUFFER_SIZE = 10;
-
   private final Supplier<Stream<TElement>> producer;
   private final Consumer<TElement> consumer;
 
@@ -46,10 +47,10 @@ public class ProducerConsumerOrchestrator<TElement> {
    * Run the Producer/Consumer.
    *
    * @param numberOfConsumers number of consumers. 0 to use 'unlimited' consumers approach via
-   *     cached thread pool
+   *     thread pool
    */
   public void run(int numberOfConsumers) {
-    ArrayBlockingQueue<TElement> queue = new ArrayBlockingQueue<>(BUFFER_SIZE);
+    BlockingQueue<TElement> queue = new SynchronousQueue<>();
     AtomicBoolean producerFinished = new AtomicBoolean(false);
 
     Thread producerThread = new Thread(new BlockingProducer<>(queue, producer), "producer");
@@ -145,7 +146,7 @@ public class ProducerConsumerOrchestrator<TElement> {
     public void run() {
       int count = 0;
       try {
-        while (!producerFinished.get() || !queue.isEmpty()) {
+        while (!producerFinished.get()) {
           // need timeout in case the last element is consumed before producer finished is signalled
           TElement element = queue.poll(500, TimeUnit.MILLISECONDS);
           if (element != null) {
@@ -163,8 +164,8 @@ public class ProducerConsumerOrchestrator<TElement> {
   }
 
   /**
-   * This consumer submits each element that comes through the queue to a {@link
-   * Executors#newCachedThreadPool} for processing asynchronously.
+   * This consumer submits each element that comes through the queue to an elastic thread pool for
+   * processing asynchronously.
    *
    * <p>Therefore, it grows unbounded and (in theory) should use the hardware most optimally as it
    * delegates the thread management to the OS.
@@ -191,22 +192,29 @@ public class ProducerConsumerOrchestrator<TElement> {
     @Override
     public void run() {
       AtomicInteger threadCount = new AtomicInteger();
-      ExecutorService threadPool =
-          Executors.newCachedThreadPool(
+      // alright, it's not unlimited, we are fixing the number of concurrent tasks to avoid
+      // OutOfMemoryError
+      // have found 100 per CPU works well
+      // (it's still better than CPU*100 consumers, since this approach is elastic, also only need
+      // one thread reading the queue)
+      Executor threadPool =
+          new BlockingFixedCachedExecutor(
+              Runtime.getRuntime().availableProcessors() * 100,
               runnable ->
                   new Thread(
                       runnable, "consumer-worker-%d".formatted(threadCount.getAndIncrement())));
 
       // TODO this ArrayList is a memory leak
-      //  better way to signal ExecutorService with unknown number of tasks is complete?
+      //  better way to signal when ExecutorService with unknown number of tasks is complete?
       List<Future<?>> tasks = new ArrayList<>();
 
       try {
-        while (!producerFinished.get() || !queue.isEmpty()) {
+        while (!producerFinished.get()) {
           // need timeout in case the last element is consumed before producer finished is signalled
           TElement element = queue.poll(500, TimeUnit.MILLISECONDS);
           if (element != null) {
-            Future<?> task = threadPool.submit(() -> consumer.accept(element));
+            CompletableFuture<?> task =
+                CompletableFuture.runAsync(() -> consumer.accept(element), threadPool);
             tasks.add(task);
           }
         }
@@ -216,13 +224,53 @@ public class ProducerConsumerOrchestrator<TElement> {
         }
       } catch (InterruptedException e) {
         log.warn("Consumer interrupted", e);
-        threadPool.shutdownNow();
         Thread.currentThread().interrupt();
       } catch (ExecutionException e) {
         log.warn("Async consumer processing failed", e);
       } finally {
         log.debug("Consumed {} elements(s)", tasks.size());
         log.debug("Created {} thread(s)", threadCount.get());
+      }
+    }
+
+    /**
+     * This executor achieves the benefit of both {@link Executors#newCachedThreadPool} and {@link
+     * Executors#newFixedThreadPool}.
+     *
+     * <p>Instead of infinitely creating threads or queueing tasks (and getting {@link
+     * OutOfMemoryError}) it blocks when the task limit is reached.
+     */
+    // https://www.baeldung.com/java-executors-cached-fixed-threadpool#unfortunate-similarities
+    // code from https://stackoverflow.com/a/50361304/6122976
+    private static final class BlockingFixedCachedExecutor implements Executor {
+
+      private static final Logger log = LogManager.getLogger();
+
+      private final Semaphore semaphore;
+      private final Executor delegate;
+
+      private BlockingFixedCachedExecutor(
+          int numberOfConcurrentTasks, ThreadFactory threadFactory) {
+        this.semaphore = new Semaphore(numberOfConcurrentTasks);
+        delegate = Executors.newCachedThreadPool(threadFactory);
+      }
+
+      @Override
+      public void execute(Runnable command) {
+        try {
+          semaphore.acquire();
+          delegate.execute(
+              () -> {
+                try {
+                  command.run();
+                } finally {
+                  semaphore.release();
+                }
+              });
+        } catch (InterruptedException e) {
+          log.error("Interrupted", e);
+          Thread.currentThread().interrupt();
+        }
       }
     }
   }
