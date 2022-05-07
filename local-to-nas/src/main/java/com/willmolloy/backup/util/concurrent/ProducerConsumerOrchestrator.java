@@ -27,7 +27,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Encapsulates and orchestrates {@link BlockingQueue} producer-consumer setup.
  *
- * @param <TElement> type of elements produced/consumed.
+ * @param <TElement> type of elements processed
  * @author <a href=https://willmolloy.com>Will Molloy</a>
  */
 public class ProducerConsumerOrchestrator<TElement> {
@@ -46,8 +46,8 @@ public class ProducerConsumerOrchestrator<TElement> {
   /**
    * Run the Producer/Consumer.
    *
-   * @param numberOfConsumers number of consumers. 0 to use 'unlimited' consumers approach via
-   *     thread pool
+   * @param numberOfConsumers number of consumers. 0 to use 'infinite' consumers approach via
+   *     elastic thread pool
    */
   public void run(int numberOfConsumers) {
     BlockingQueue<TElement> queue = new SynchronousQueue<>();
@@ -72,9 +72,9 @@ public class ProducerConsumerOrchestrator<TElement> {
       consumerThreads =
           List.of(
               new Thread(
-                  new BlockingUnboundedConsumer<>(queue, consumer, producerFinished),
+                  new BlockingElasticConsumer<>(queue, consumer, producerFinished),
                   "consumer-main"));
-      log.debug("Starting Unbounded Consumer");
+      log.debug("Starting Elastic Consumer");
     }
     for (Thread consumerThread : consumerThreads) {
       consumerThread.start();
@@ -167,12 +167,12 @@ public class ProducerConsumerOrchestrator<TElement> {
    * This consumer submits each element that comes through the queue to an elastic thread pool for
    * processing asynchronously.
    *
-   * <p>Therefore, it grows unbounded and (in theory) should use the hardware most optimally as it
-   * delegates the thread management to the OS.
+   * <p>Therefore, it grows infinitely (well, until a fixed number of concurrent tasks) and uses the
+   * CPU better when tasks are I/O bound.
    *
-   * @param <TElement> type of elements consumed.
+   * @param <TElement> type of elements consumed
    */
-  private static final class BlockingUnboundedConsumer<TElement> implements Runnable {
+  private static final class BlockingElasticConsumer<TElement> implements Runnable {
 
     private static final Logger log = LogManager.getLogger();
 
@@ -180,7 +180,7 @@ public class ProducerConsumerOrchestrator<TElement> {
     private final Consumer<TElement> consumer;
     private final AtomicBoolean producerFinished;
 
-    private BlockingUnboundedConsumer(
+    private BlockingElasticConsumer(
         BlockingQueue<TElement> queue,
         Consumer<TElement> consumer,
         AtomicBoolean producerFinished) {
@@ -192,20 +192,20 @@ public class ProducerConsumerOrchestrator<TElement> {
     @Override
     public void run() {
       AtomicInteger threadCount = new AtomicInteger();
-      // alright, it's not unlimited, we are fixing the number of concurrent tasks to avoid
+      // alright, it's not infinite, we are fixing the number of concurrent tasks to avoid
       // OutOfMemoryError
-      // have found 100 per CPU works well
-      // (it's still better than CPU*100 consumers, since this approach is elastic, also only need
-      // one thread reading the queue)
+      // have found CPU*100 works well
+      // (it's still better than CPU*100 consumers, since this approach is elastic and starts work
+      // immediately, also only need one thread reading the queue)
       Executor threadPool =
-          new BlockingFixedCachedExecutor(
+          new BlockingElasticExecutor(
               Runtime.getRuntime().availableProcessors() * 100,
               runnable ->
                   new Thread(
                       runnable, "consumer-worker-%d".formatted(threadCount.getAndIncrement())));
 
       // TODO this ArrayList is a memory leak
-      //  better way to signal when ExecutorService with unknown number of tasks is complete?
+      //  better way to signal when unknown number of tasks is complete?
       List<Future<?>> tasks = new ArrayList<>();
 
       try {
@@ -238,19 +238,19 @@ public class ProducerConsumerOrchestrator<TElement> {
      * Executors#newFixedThreadPool}.
      *
      * <p>Instead of infinitely creating threads or queueing tasks (and getting {@link
-     * OutOfMemoryError}) it blocks when the task limit is reached.
+     * OutOfMemoryError}) it blocks when the concurrent task limit is reached. Furthermore, it
+     * caches the threads unlike {@link Executors#newFixedThreadPool}.
      */
     // https://www.baeldung.com/java-executors-cached-fixed-threadpool#unfortunate-similarities
     // code from https://stackoverflow.com/a/50361304/6122976
-    private static final class BlockingFixedCachedExecutor implements Executor {
+    private static final class BlockingElasticExecutor implements Executor {
 
       private static final Logger log = LogManager.getLogger();
 
       private final Semaphore semaphore;
       private final Executor delegate;
 
-      private BlockingFixedCachedExecutor(
-          int numberOfConcurrentTasks, ThreadFactory threadFactory) {
+      private BlockingElasticExecutor(int numberOfConcurrentTasks, ThreadFactory threadFactory) {
         this.semaphore = new Semaphore(numberOfConcurrentTasks);
         delegate = Executors.newCachedThreadPool(threadFactory);
       }
