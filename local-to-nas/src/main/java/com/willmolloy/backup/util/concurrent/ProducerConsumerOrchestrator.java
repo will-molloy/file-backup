@@ -1,5 +1,7 @@
 package com.willmolloy.backup.util.concurrent;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -20,7 +22,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Encapsulates {@link BlockingQueue} producer-consumer setup.
+ * Encapsulates and orchestrates {@link BlockingQueue} producer-consumer setup.
  *
  * @param <TElement> type of elements produced/consumed.
  * @author <a href=https://willmolloy.com>Will Molloy</a>
@@ -36,17 +38,17 @@ public class ProducerConsumerOrchestrator<TElement> {
 
   public ProducerConsumerOrchestrator(
       Supplier<Stream<TElement>> producer, Consumer<TElement> consumer) {
-    this.producer = producer;
-    this.consumer = consumer;
+    this.producer = checkNotNull(producer);
+    this.consumer = checkNotNull(consumer);
   }
 
   /**
    * Run the Producer/Consumer.
    *
-   * @param numConsumers number of consumers. 0 to use 'unlimited' consumers approach via cached
-   *     thread pool
+   * @param numberOfConsumers number of consumers. 0 to use 'unlimited' consumers approach via
+   *     cached thread pool
    */
-  public void run(int numConsumers) {
+  public void run(int numberOfConsumers) {
     ArrayBlockingQueue<TElement> queue = new ArrayBlockingQueue<>(BUFFER_SIZE);
     AtomicBoolean producerFinished = new AtomicBoolean(false);
 
@@ -55,16 +57,16 @@ public class ProducerConsumerOrchestrator<TElement> {
     producerThread.start();
 
     List<Thread> consumerThreads;
-    if (numConsumers > 0) {
+    if (numberOfConsumers > 0) {
       consumerThreads =
-          IntStream.range(0, numConsumers)
+          IntStream.range(0, numberOfConsumers)
               .mapToObj(
                   i ->
                       new Thread(
                           new BlockingConsumer<>(queue, consumer, producerFinished),
                           "consumer-%d".formatted(i)))
               .toList();
-      log.debug("Starting {} Consumers", numConsumers);
+      log.debug("Starting {} Consumer(s)", numberOfConsumers);
     } else {
       consumerThreads =
           List.of(
@@ -183,6 +185,7 @@ public class ProducerConsumerOrchestrator<TElement> {
         ExecutorService threadPool =
             Executors.newCachedThreadPool(
                 runnable -> new Thread(runnable, "consumer-%d".formatted(count.getAndIncrement())));
+        // TODO this ArrayList is a memory leak, better way to signal consumer is finished?
         List<Future<?>> tasks = new ArrayList<>();
 
         while (!producerFinished.get() || !queue.isEmpty()) {

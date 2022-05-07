@@ -1,5 +1,7 @@
 package com.willmolloy.backup;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.willmolloy.backup.util.DirectoryWalker;
 import com.willmolloy.backup.util.concurrent.ProducerConsumerOrchestrator;
 import java.io.IOException;
@@ -23,7 +25,7 @@ class BackupDeleter {
   private final boolean dryRun;
 
   BackupDeleter(DirectoryWalker directoryWalker, boolean dryRun) {
-    this.directoryWalker = directoryWalker;
+    this.directoryWalker = checkNotNull(directoryWalker);
     this.dryRun = dryRun;
   }
 

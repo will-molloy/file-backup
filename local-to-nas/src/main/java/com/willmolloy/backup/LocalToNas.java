@@ -1,5 +1,7 @@
 package com.willmolloy.backup;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import java.nio.file.Path;
 
 /**
@@ -13,8 +15,8 @@ class LocalToNas implements FileBackup<Path, Path> {
   private final BackupDeleter backupDeleter;
 
   LocalToNas(BackupCreator backupCreator, BackupDeleter backupDeleter) {
-    this.backupCreator = backupCreator;
-    this.backupDeleter = backupDeleter;
+    this.backupCreator = checkNotNull(backupCreator);
+    this.backupDeleter = checkNotNull(backupDeleter);
   }
 
   @Override

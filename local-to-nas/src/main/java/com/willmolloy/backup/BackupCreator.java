@@ -26,7 +26,7 @@ class BackupCreator {
   private final boolean dryRun;
 
   BackupCreator(DirectoryWalker directoryWalker, boolean dryRun) {
-    this.directoryWalker = directoryWalker;
+    this.directoryWalker = checkNotNull(directoryWalker);
     this.dryRun = dryRun;
   }
 
