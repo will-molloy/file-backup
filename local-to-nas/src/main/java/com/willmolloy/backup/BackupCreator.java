@@ -41,7 +41,7 @@ class BackupCreator {
               // subdirectories would depend on their parents being created first)
               () -> directoryWalker.leavesExcludingSelf(source),
               sourcePath -> process(sourcePath, source, destination, copyCount));
-      producerConsumer.run(0);
+      producerConsumer.run();
     } finally {
       log.info("Created/updated {} backup(s)", copyCount.get());
     }

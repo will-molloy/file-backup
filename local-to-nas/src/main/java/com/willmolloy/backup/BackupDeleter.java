@@ -30,16 +30,16 @@ class BackupDeleter {
   }
 
   void deleteRedundantBackups(Path source, Path destination) {
-    log.info("Processing destination: {}", source);
+    log.info("Processing destination: {}", destination);
     AtomicInteger deleteCount = new AtomicInteger(0);
     try {
       ProducerConsumerOrchestrator<Path> producerConsumer =
           new ProducerConsumerOrchestrator<>(
               // unlike creating the backups, need to process all nodes, not just leaves, because if
-              // we delete a leaf, then may need to delete its parent too
+              // we delete a leaf, then unknown if we need to delete its parent too
               () -> directoryWalker.allNodesExcludingSelf(destination),
               destinationPath -> process(destinationPath, source, destination, deleteCount));
-      producerConsumer.run(0);
+      producerConsumer.run();
     } finally {
       log.info("Deleted {} backup(s)", deleteCount.get());
     }
