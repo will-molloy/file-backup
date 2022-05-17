@@ -2,17 +2,12 @@ package com.willmolloy.backup.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -42,28 +37,29 @@ public class ProducerConsumerOrchestrator<TElement> {
   /** Run the Producer/Consumer. */
   public void run() {
     BlockingQueue<TElement> queue = new SynchronousQueue<>();
-    AtomicBoolean producerFinished = new AtomicBoolean(false);
+    SharedState sharedState = new SharedState();
 
-    Thread producerThread = new Thread(new BlockingProducer<>(queue, producer), "producer");
+    Thread producerThread =
+        new Thread(new BlockingProducer<>(queue, producer, sharedState), "producer");
     log.debug("Starting Producer");
     producerThread.start();
 
     Thread mainConsumerThread =
-        new Thread(
-            new BlockingElasticConsumer<>(queue, consumer, producerFinished), "consumer-main");
+        new Thread(new BlockingElasticConsumer<>(queue, consumer, sharedState), "consumer-main");
     log.debug("Starting Elastic Consumer");
     mainConsumerThread.start();
 
     try {
-      // wait until producer finishes
       producerThread.join();
-      // signal completion
-      producerFinished.set(true);
-      // wait until consumers finish
       mainConsumerThread.join();
     } catch (InterruptedException e) {
       log.warn("Producer/Consumer interrupted", e);
       Thread.currentThread().interrupt();
+    } finally {
+      log.debug(
+          "Produced {} element(s), Consumed {} element(s)",
+          sharedState.producedCount,
+          sharedState.consumedCount);
     }
   }
 
@@ -73,26 +69,30 @@ public class ProducerConsumerOrchestrator<TElement> {
 
     private final BlockingQueue<TElement> queue;
     private final Supplier<Stream<TElement>> producer;
+    private final SharedState sharedState;
 
-    private BlockingProducer(BlockingQueue<TElement> queue, Supplier<Stream<TElement>> producer) {
+    private BlockingProducer(
+        BlockingQueue<TElement> queue,
+        Supplier<Stream<TElement>> producer,
+        SharedState sharedState) {
       this.queue = checkNotNull(queue);
       this.producer = checkNotNull(producer);
+      this.sharedState = checkNotNull(sharedState);
     }
 
     @Override
     public void run() {
-      int count = 0;
       try {
         Iterator<TElement> iterator = producer.get().iterator();
         while (iterator.hasNext()) {
           queue.put(iterator.next());
-          count++;
+          sharedState.producedCount++;
         }
       } catch (InterruptedException e) {
         log.warn("Producer interrupted", e);
         Thread.currentThread().interrupt();
       } finally {
-        log.debug("Produced {} elements(s)", count);
+        sharedState.producerFinished = true;
       }
     }
   }
@@ -115,53 +115,48 @@ public class ProducerConsumerOrchestrator<TElement> {
 
     private final BlockingQueue<TElement> queue;
     private final Consumer<TElement> consumer;
-    private final AtomicBoolean producerFinished;
+    private final SharedState sharedState;
 
     private BlockingElasticConsumer(
-        BlockingQueue<TElement> queue,
-        Consumer<TElement> consumer,
-        AtomicBoolean producerFinished) {
+        BlockingQueue<TElement> queue, Consumer<TElement> consumer, SharedState sharedState) {
       this.queue = checkNotNull(queue);
       this.consumer = checkNotNull(consumer);
-      this.producerFinished = checkNotNull(producerFinished);
+      this.sharedState = checkNotNull(sharedState);
     }
 
     @Override
     public void run() {
-      ExecutorService threadPool = threadPool();
-
-      // TODO this ArrayList is a memory leak
-      List<Future<?>> tasks = new ArrayList<>(1_000_000);
-
-      try {
-        while (!producerFinished.get()) {
+      try (CloseableExecutorService threadPool = threadPool()) {
+        while (!sharedState.producerFinished
+            || sharedState.producedCount > sharedState.consumedCount) {
           // need timeout in case the last element is consumed before producer finished is signalled
           TElement element = queue.poll(500, TimeUnit.MILLISECONDS);
           if (element != null) {
-            Future<?> task = threadPool.submit(() -> consumer.accept(element));
-            tasks.add(task);
+            threadPool.submit(() -> consumer.accept(element));
+            sharedState.consumedCount++;
           }
-        }
-
-        for (Future<?> task : tasks) {
-          task.get();
         }
       } catch (InterruptedException e) {
         log.warn("Consumer interrupted", e);
         Thread.currentThread().interrupt();
-      } catch (ExecutionException e) {
-        log.warn("Async consumer processing failed", e);
-      } finally {
-        log.debug("Consumed {} elements(s)", tasks.size());
       }
     }
 
-    private ExecutorService threadPool() {
+    private CloseableExecutorService threadPool() {
       // TODO use virtual threads
       AtomicInteger threadCount = new AtomicInteger();
-      return Executors.newCachedThreadPool(
-          runnable ->
-              new Thread(runnable, "consumer-worker-%d".formatted(threadCount.getAndIncrement())));
+      ExecutorService executorService =
+          Executors.newCachedThreadPool(
+              runnable ->
+                  new Thread(
+                      runnable, "consumer-worker-%d".formatted(threadCount.getAndIncrement())));
+      return new CloseableExecutorService(executorService);
     }
+  }
+
+  private static final class SharedState {
+    private boolean producerFinished;
+    private int producedCount;
+    private int consumedCount;
   }
 }
