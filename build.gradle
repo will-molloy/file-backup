@@ -77,8 +77,6 @@ subprojects {
 
   // Tests
   tasks.withType(Test) {
-    // run tests in parallel, assumes they're threadsafe
-    maxParallelForks = Runtime.runtime.availableProcessors().intdiv(2) ?: 1
     // use JUnit 5 engine
     useJUnitPlatform()
     testLogging {
@@ -143,6 +141,7 @@ subprojects {
     testImplementation group: 'org.mockito', name: 'mockito-core', version: "$mockitoVersion"
     testImplementation group: 'org.mockito', name: 'mockito-junit-jupiter', version: "$mockitoVersion"
     testImplementation group: 'org.mockito', name: 'mockito-inline', version: "$mockitoVersion"
+    testImplementation group: 'com.github.javafaker', name: 'javafaker', version: '1.0.2'
   }
 
   // dependency cleanup, exclusions and resolutions

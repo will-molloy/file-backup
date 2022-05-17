@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+  <Properties>
+    <property name="fileNameDate">${date:yyyy.MM.dd - HH.mm.ss.SSS}</property>
+  </Properties>
+
+  <Appenders>
+    <Console name="console" target="SYSTEM_OUT">
+      <ThresholdFilter level="debug"/>
+      <PatternLayout pattern="[%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [%c{1.}] - %msg%n"/>
+    </Console>
+
+    <File name="file" fileName="logs/${fileNameDate}.log">
+      <PatternLayout pattern="[%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [%c] [%M] - %msg%n"/>
+    </File>
+  </Appenders>
+
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="console"/>
+      <AppenderRef ref="file"/>
+    </Root>
+
+    <Logger name="com.willmolloy" level="debug"/>
+  </Loggers>
+</Configuration>

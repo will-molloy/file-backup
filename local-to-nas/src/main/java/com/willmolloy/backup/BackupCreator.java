@@ -1,0 +1,96 @@
+package com.willmolloy.backup;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import com.willmolloy.backup.util.DirectoryWalker;
+import com.willmolloy.backup.util.concurrent.ProducerConsumerOrchestrator;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+/**
+ * Creates backups (files in Source that don't exist in Destination).
+ *
+ * <p>And updates backups (files in both Source and Destination that aren't in sync).
+ *
+ * @author <a href=https://willmolloy.com>Will Molloy</a>
+ */
+class BackupCreator {
+
+  private static final Logger log = LogManager.getLogger();
+
+  private final DirectoryWalker directoryWalker;
+  private final boolean dryRun;
+
+  BackupCreator(DirectoryWalker directoryWalker, boolean dryRun) {
+    this.directoryWalker = checkNotNull(directoryWalker);
+    this.dryRun = dryRun;
+  }
+
+  void createOrUpdateOutOfSyncBackups(Path source, Path destination) {
+    log.info("Processing source: {}", source);
+    AtomicInteger copyCount = new AtomicInteger(0);
+    try {
+      ProducerConsumerOrchestrator<Path> producerConsumer =
+          new ProducerConsumerOrchestrator<>(
+              // only need to process leaves, parent dirs can be created all at once when needed
+              // also allows the code to run concurrently (it wouldn't be threadsafe otherwise,
+              // subdirectories would depend on their parents being created first)
+              () -> directoryWalker.leavesExcludingSelf(source),
+              sourcePath -> process(sourcePath, source, destination, copyCount));
+      producerConsumer.run();
+    } finally {
+      log.info("Created/updated {} backup(s)", copyCount.get());
+    }
+  }
+
+  private void process(Path sourcePath, Path source, Path destination, AtomicInteger copyCount) {
+    Path relativeFromSource = source.relativize(sourcePath);
+    Path destinationPath = destination.resolve(relativeFromSource);
+
+    if (Files.exists(sourcePath)) {
+
+      if (!Files.exists(destinationPath)) {
+        log.info("Creating backup: {} -> {}", sourcePath, destinationPath);
+        copy(sourcePath, destinationPath);
+        copyCount.getAndIncrement();
+
+      } else if (outOfSync(sourcePath, destinationPath)) {
+        log.info("Updating backup: {} -> {}", sourcePath, destinationPath);
+        copy(sourcePath, destinationPath);
+        copyCount.getAndIncrement();
+      }
+    }
+  }
+
+  private boolean outOfSync(Path source, Path destination) {
+    try {
+      // comparing last modified time and size attributes only
+      // Files.mismatch is slow (and unnecessary?) (file size check is unnecessary?)
+      return !Files.getLastModifiedTime(source).equals(Files.getLastModifiedTime(destination))
+          || Files.size(source) != Files.size(destination);
+    } catch (Exception e) {
+      log.warn("Error comparing: %s to %s".formatted(source, destination), e);
+      return false;
+    }
+  }
+
+  private void copy(Path source, Path destination) {
+    if (dryRun) {
+      return;
+    }
+    try {
+      Files.createDirectories(checkNotNull(destination.getParent()));
+      Files.copy(
+          source,
+          destination,
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.COPY_ATTRIBUTES);
+    } catch (Exception e) {
+      log.error("Error copying: %s -> %s".formatted(source, destination), e);
+    }
+  }
+}
